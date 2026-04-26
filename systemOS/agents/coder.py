@@ -153,10 +153,21 @@ async def code_task(
     if model is None:
         model = get_model("code")["model"]
 
-    # Inject project map if a root is provided
+    # Build system prompt: project map + AGENTS.md + ARCHITECTURE.md + coder SOP
     system = _SYSTEM_PROMPT
     if project_root and project_root.exists():
-        system = map_as_system_block(project_root) + "\n\n" + _SYSTEM_PROMPT
+        parts = [map_as_system_block(project_root)]
+        # Inject project-specific coding conventions if they exist
+        for doc_name in ("AGENTS.md", "ARCHITECTURE.md", "CLAUDE.md"):
+            doc_path = project_root / doc_name
+            if doc_path.exists():
+                content = doc_path.read_text(encoding="utf-8", errors="replace")
+                # Truncate large files to avoid blowing the context
+                if len(content) > 3000:
+                    content = content[:3000] + "\n... (truncated)"
+                parts.append(f"<{doc_name}>\n{content}\n</{doc_name}>")
+        parts.append(_SYSTEM_PROMPT)
+        system = "\n\n".join(parts)
 
     result = CoderResult(code="", tests="", passed=False, iterations=0, model=model)
     error_feedback = ""

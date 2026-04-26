@@ -13,9 +13,56 @@ from agents.content import run_content_task
 from agents.generic import run_generic_task
 from services.expert_panel import expert_panel_runner
 from config.models import should_use_expert_panel
+from agents.mapmaker import build_map
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger("prisma.orchestrator")
+
+
+async def _run_thorough_research(task: dict, routing: dict):
+    """
+    Thorough depth: decompose topic with Mapmaker, then run Expert Panel on
+    each high-priority chapter. Results are accumulated and written back to the task.
+    """
+    from services.queue import set_task_status
+    task_id = task["id"]
+    topic = task.get("input", "")
+
+    await set_task_status(task_id, "running", output="[Thorough] Decomposing topic with Mapmaker…")
+
+    try:
+        map_result = await build_map(topic)
+        chapters = map_result.high_priority_first()[:8]  # cap at 8 to avoid runaway
+
+        logger.info("[ORCHESTRATOR] Thorough: %d chapters to run via Expert Panel", len(chapters))
+        await set_task_status(
+            task_id, "running",
+            output=f"[Thorough] Map built: {len(chapters)} chapters. Running Expert Panel…"
+        )
+
+        chapter_outputs = []
+        for i, chapter in enumerate(chapters, 1):
+            ch_task = {
+                **task,
+                "id": task_id,
+                "input": chapter["research_query"],
+                "module": chapter.get("volume", task.get("module", "research")),
+            }
+            panel = await expert_panel_runner(ch_task, routing)
+            chapter_outputs.append(
+                f"## {chapter['title']}\n\n{panel.final_output}"
+            )
+            logger.info(
+                "[ORCHESTRATOR] Thorough chapter %d/%d done — verdict=%s",
+                i, len(chapters), panel.verdict,
+            )
+
+        full_output = f"# {topic}\n\n" + "\n\n---\n\n".join(chapter_outputs)
+        await set_task_status(task_id, "done", output=full_output)
+
+    except Exception as e:
+        logger.error("[ORCHESTRATOR] Thorough research failed: %s", e)
+        await set_task_status(task_id, "failed", output=f"Thorough research error: {e}")
 
 
 async def agent_runner(task: dict, routing: dict):
@@ -45,7 +92,11 @@ async def agent_runner(task: dict, routing: dict):
     logger.info("[ORCHESTRATOR] Starting task %s — type=%s module=%s", task_id[:8], task_type, module)
 
     try:
-        if task_type == "research":
+        if task_type == "research" and task.get("depth") == "thorough":
+            # thorough depth: decompose with Mapmaker, then run Expert Panel on each chapter
+            logger.info("[ORCHESTRATOR] depth=thorough — triggering Mapmaker decomposition")
+            await _run_thorough_research(task, routing)
+        elif task_type == "research":
             await run_research_task(task, routing)
         elif task_type == "comms":
             await run_comms_task(task, routing)

@@ -29,31 +29,14 @@ from typing import Optional
 from systemOS.mcp.search import run_search
 from systemOS.mcp.browser import scrape
 from systemOS.llm import complete, complete_with_usage, log_llm_call
+from systemOS.services.sop_assembler import assemble_sop
 
 logger = logging.getLogger(__name__)
 
-RESEARCHER_CONTEXT = """
-You are a supply chain and procurement research assistant for Daniel,
-an Inventory Manager at NNL — a UK candle, fragrance, and homeware brand
-with 10+ physical retail shops and wholesale/online channels.
 
-NNL context:
-- Uses MRP Easy as their ERP/MRP system
-- Manages production (manufacturing finished goods from raw materials)
-- Manages procurement of raw materials and third-party finished goods
-- Multiple physical shop locations across the UK (Aldeburgh, Cambridge, Chelsea,
-  Columbia Road, Southwold, Woodbridge, and others)
-- Weekly Monday shop replenishment cycle
-- Has a custom Google Sheets + Apps Script inventory layer (being upgraded)
-- Small team — Daniel handles procurement, inventory management, and production planning
-
-When researching, prioritise:
-- Practical, actionable advice over theory
-- Tools and approaches that work for small-to-mid sized manufacturers/retailers
-- UK-relevant context where applicable
-- What can be done with limited IT resources or existing tools (Google Sheets, MRP Easy)
-- AI and automation opportunities with realistic implementation effort
-"""
+def _get_research_sop(workspace: str = "nnl") -> str:
+    """Assemble the layered research SOP for the given workspace."""
+    return assemble_sop(task_type="research", module="research", workspace=workspace)
 
 DEFAULT_STRUCTURE = """
 Structure the report as:
@@ -101,7 +84,7 @@ def _clear_checkpoint(topic_id: int):
 
 # ── Step 1: generate queries ───────────────────────────────────────────────────
 
-async def _generate_queries(topic: str, n: int = 4) -> tuple[list[str], dict]:
+async def _generate_queries(topic: str, n: int = 4, workspace: str = "nnl") -> tuple[list[str], dict]:
     prompt = f"""I need to research this topic: "{topic}"
 
 Generate exactly {n} specific, targeted search queries that will find the most useful
@@ -110,7 +93,7 @@ Return ONLY a JSON array of strings. No explanation, no markdown, just the array
 
     usage = await complete_with_usage(
         messages=[{"role": "user", "content": prompt}],
-        system=RESEARCHER_CONTEXT,
+        system=_get_research_sop(workspace),
         fast=True,
         max_tokens=400,
     )
@@ -156,7 +139,7 @@ async def _scrape_top_sources(sources: list[dict], max_scrape: int = 3) -> list[
 # ── Step 3: synthesise ─────────────────────────────────────────────────────────
 
 async def _synthesise(topic: str, sources: list[dict], sop_hint: Optional[str] = None,
-                      max_tokens: int = 4000) -> tuple[str, dict]:
+                      max_tokens: int = 4000, workspace: str = "nnl") -> tuple[str, dict]:
     context_parts = []
     for i, s in enumerate(sources[:12]):
         content = s.get("full_content") or s.get("content", "")
@@ -181,7 +164,7 @@ Use markdown formatting."""
 
     usage = await complete_with_usage(
         messages=[{"role": "user", "content": prompt}],
-        system=RESEARCHER_CONTEXT,
+        system=_get_research_sop(workspace),
         fast=False,
         max_tokens=max_tokens,
     )
@@ -198,6 +181,7 @@ async def research(
     sop_hint: Optional[str] = None,
     topic_id: Optional[int] = None,
     depth: str = "standard",
+    workspace: str = "nnl",
     emit=None,
 ) -> dict:
     """
@@ -230,7 +214,7 @@ async def research(
     # ── Step 1: queries ────────────────────────────────────────────
     if stage in ("", None):
         _emit("stage", "queries")
-        queries, q_usage = await _generate_queries(topic, n=n_queries)
+        queries, q_usage = await _generate_queries(topic, n=n_queries, workspace=workspace)
         budget.track(q_usage, call="queries")
         _emit("info", f"Generated {len(queries)} search queries")
         for q in queries:
@@ -278,7 +262,8 @@ async def research(
     if stage in ("", None, "queries", "searched", "scraped"):
         _emit("stage", "synthesising")
         _emit("info", f"Synthesising report (max {cfg['synthesis_tokens']} tokens, depth={cfg['label']})...")
-        report, s_usage = await _synthesise(topic, sources, sop_hint=sop_hint, max_tokens=cfg["synthesis_tokens"])
+        report, s_usage = await _synthesise(topic, sources, sop_hint=sop_hint,
+                                            max_tokens=cfg["synthesis_tokens"], workspace=workspace)
         budget.track(s_usage, call="synthesis")
         _emit("info", f"Report generated — {len(report):,} characters")
         if topic_id:

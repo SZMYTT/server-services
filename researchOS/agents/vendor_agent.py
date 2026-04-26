@@ -29,8 +29,11 @@ import httpx
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
 
 from systemOS.config.depth import get as get_depth
+from systemOS.services.sop_assembler import assemble_sop
 from db import get_conn
 from systemOS.mcp.search import run_search
+from pydantic import BaseModel, field_validator
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -39,31 +42,65 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 
-# ── System prompt ─────────────────────────────────────────────────────────────
+# ── Pydantic profile schema — validation replaces LLM retry loops ─────────────
 
-SYSTEM_PROMPT_BASE = """You are a procurement intelligence agent for NNL, a UK candle and fragrance brand.
-Your job is to research supplier websites and build structured intelligence profiles.
+class ProductEntry(BaseModel):
+    query: str = ""
+    name: Optional[str] = None
+    url: Optional[str] = None
+    price: Optional[str] = None
+    price_tiers: List[dict] = []
+    in_stock: Optional[bool] = None
+    description: Optional[str] = None
+    alternatives_found: List[dict] = []
 
-You have these tools. Respond with ONLY a JSON object on every turn — no explanation outside JSON.
+class VendorProfile(BaseModel):
+    vendor_name: Optional[str] = None
+    company_type: Optional[str] = "unknown"
+    uk_based: Optional[bool] = None
+    about: Optional[str] = None
+    address: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    certifications: List[str] = []
+    min_order_value: Optional[str] = None
+    min_order_qty: Optional[str] = None
+    lead_time: Optional[str] = None
+    wholesale_available: Optional[bool] = None
+    trade_account_required: Optional[bool] = None
+    payment_terms: Optional[str] = None
+    delivery_info: Optional[str] = None
+    products: List[ProductEntry] = []
+    potential_upstream_supplier: Optional[str] = None
+    web_alternatives: List[dict] = []
+    risk_flags: List[str] = []
+    confidence_score: int = 0
+    notes: Optional[str] = None
 
-TOOLS:
-1. scrape_page — get clean text from any URL
-   {{"tool": "scrape_page", "args": {{"url": "https://..."}}, "reasoning": "why"}}
+    @field_validator("confidence_score")
+    @classmethod
+    def clamp_score(cls, v):
+        return max(0, min(10, int(v) if v else 0))
 
-2. search_site — search this supplier's own site for a product or topic
-   {{"tool": "search_site", "args": {{"query": "coco apricot wax 1kg"}}, "reasoning": "why"}}
 
-3. search_web — search the web via SearXNG (use this to find alternative suppliers, compare products across suppliers, or find upstream manufacturers)
-   {{"tool": "search_web", "args": {{"query": "coco apricot wax wholesale UK supplier"}}, "reasoning": "why"}}
+def _validate_profile(raw: dict) -> dict:
+    """Validate profile against VendorProfile schema. Returns coerced dict."""
+    try:
+        return VendorProfile(**raw).model_dump()
+    except Exception as e:
+        logger.warning("[VENDOR] Profile validation issue (partial result kept): %s", e)
+        # Build a partial profile from whatever fields are valid
+        partial = {}
+        for field in VendorProfile.model_fields:
+            if field in raw:
+                try:
+                    partial[field] = raw[field]
+                except Exception:
+                    pass
+        return VendorProfile(**partial).model_dump()
 
-4. get_links — get navigation links from the vendor's homepage
-   {{"tool": "get_links", "args": {{}}, "reasoning": "why"}}
 
-5. done — you have enough information, produce the final profile
-   {{"tool": "done", "profile": {{ ...see schema below... }}}}
-
-PROFILE SCHEMA (use null for unknown, do not guess):
-{{
+_PROFILE_SCHEMA = """{
   "vendor_name": "string",
   "company_type": "manufacturer|distributor|wholesaler|dropshipper|retailer|unknown",
   "uk_based": true/false/null,
@@ -79,47 +116,26 @@ PROFILE SCHEMA (use null for unknown, do not guess):
   "trade_account_required": true/false/null,
   "payment_terms": "string or null",
   "delivery_info": "string or null",
-  "products": [
-    {{
-      "query": "the product search term we were looking for",
-      "name": "product name on site",
-      "url": "product page URL or null",
-      "price": "listed price or null",
-      "price_tiers": [{{"qty": "1kg", "price": "£4.50"}}],
-      "in_stock": true/false/null,
-      "description": "spec relevant to procurement",
-      "alternatives_found": [{{"name": "...", "url": "...", "price": "...", "supplier": "..."}}]
-    }}
-  ],
+  "products": [{"query":"...","name":"...","url":"...","price":"...","price_tiers":[],"in_stock":null,"description":"...","alternatives_found":[]}],
   "potential_upstream_supplier": "e.g. Firmenich or null",
-  "web_alternatives": [
-    {{"company": "...", "url": "...", "product": "...", "price": "...", "notes": "..."}}
-  ],
+  "web_alternatives": [{"company":"...","url":"...","product":"...","price":"...","notes":"..."}],
   "risk_flags": [],
   "confidence_score": 7,
   "notes": "procurement observations"
-}}
-
-STRATEGY GUIDANCE:
-- Start with get_links to understand site structure, then scrape homepage
-- Search for each product the user wants to find
-- Use search_web to find alternative suppliers once you know what products are available
-- Check delivery/trade/wholesale pages for commercial terms
-- Look for price tier tables (bulk discounts) on product pages
-- A confidence score of 8+ means you found pricing, lead times, and MOQ
-
-SESSION INSTRUCTIONS:
-{agent_instruction}
-Time budget: {time_budget_min} minutes. You have approximately {max_iterations} tool calls.
-Call done before the budget runs out — a partial profile is better than none."""
+}"""
 
 
 def _build_system_prompt(depth_cfg: dict) -> str:
-    return SYSTEM_PROMPT_BASE.format(
-        agent_instruction=depth_cfg["agent_instruction"],
-        time_budget_min=depth_cfg["est_minutes"],
-        max_iterations=depth_cfg["max_iterations"],
+    """Assemble layered SOP + runtime depth instructions + profile schema."""
+    sop_base = assemble_sop(task_type="research", module="vendor_scout", workspace="nnl")
+    runtime = (
+        f"\n\nPROFILE SCHEMA (use null for unknown, never guess):\n{_PROFILE_SCHEMA}"
+        f"\n\nSESSION: {depth_cfg['agent_instruction']}"
+        f"\nTime budget: {depth_cfg['est_minutes']} minutes. "
+        f"Max tool calls: {depth_cfg['max_iterations']}."
+        f"\nCall done before budget runs out — partial profile beats none."
     )
+    return sop_base + runtime
 
 
 # ── LLM call ──────────────────────────────────────────────────────────────────
@@ -437,8 +453,10 @@ async def run_vendor_agent(job_id: int, emit=None):
 
                 # ── done ──────────────────────────────────────────────────────
                 if tool == "done":
-                    profile = action.get("profile", {})
-                    log(f"  ✓ Agent finished in {elapsed/60:.1f} min, {iterations} calls")
+                    raw_profile = action.get("profile", {})
+                    profile = _validate_profile(raw_profile)
+                    log(f"  ✓ Agent finished in {elapsed/60:.1f} min, {iterations} calls — "
+                        f"confidence={profile.get('confidence_score', 0)}/10")
                     break
 
                 # ── execute tool ──────────────────────────────────────────────
@@ -495,9 +513,9 @@ async def run_vendor_agent(job_id: int, emit=None):
             raw = await _llm_call(conversation)
             try:
                 action = _parse_action(raw)
-                profile = action.get("profile", {})
+                profile = _validate_profile(action.get("profile", {}))
             except Exception:
-                profile = {}
+                profile = _validate_profile({})
 
         if not profile:
             profile = {}

@@ -40,6 +40,11 @@ from systemOS.services.token_tracker import TokenBudget
 
 MAX_CORRECTION_PASSES = 2  # Architect re-runs if Auditor returns FAIL
 
+# Limits concurrent heavy (27B/70B) calls to protect Mac VRAM.
+# gemma2:27b ≈ 18GB, gemma2:9b ≈ 7GB × 2 = 32GB peak.
+# Semaphore(2) means at most 2 architect/auditor calls run at once.
+_HEAVY_SEMAPHORE = asyncio.Semaphore(2)
+
 logger = logging.getLogger("systemos.expert_panel")
 
 
@@ -69,12 +74,13 @@ async def _run_architect(task: dict) -> tuple[str, LLMResult]:
     timeout = MODELS["architect"]["timeout_secs"]
 
     logger.info("[PANEL] Architect starting — model=%s", model)
-    result = await complete_ex(
-        messages=[{"role": "user", "content": task.get("input", "")}],
-        system=sop,
-        max_tokens=4000,
-        model=model,
-    )
+    async with _HEAVY_SEMAPHORE:
+        result = await complete_ex(
+            messages=[{"role": "user", "content": task.get("input", "")}],
+            system=sop,
+            max_tokens=4000,
+            model=model,
+        )
     logger.info("[PANEL] Architect done — tokens=%d", result["tokens"]["total"])
     return result["text"], result
 
@@ -96,12 +102,13 @@ async def _run_auditor_baseline(task: dict) -> tuple[str, LLMResult]:
     )
 
     logger.info("[PANEL] Auditor baseline starting — model=%s", model)
-    result = await complete_ex(
-        messages=[{"role": "user", "content": baseline_prompt}],
-        system=sop,
-        max_tokens=800,
-        model=model,
-    )
+    async with _HEAVY_SEMAPHORE:
+        result = await complete_ex(
+            messages=[{"role": "user", "content": baseline_prompt}],
+            system=sop,
+            max_tokens=800,
+            model=model,
+        )
     logger.info("[PANEL] Auditor baseline done — tokens=%d", result["tokens"]["total"])
     return result["text"], result
 
