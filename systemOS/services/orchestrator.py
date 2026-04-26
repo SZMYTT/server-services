@@ -51,6 +51,16 @@ async def agent_runner(task: dict, routing: dict):
             await run_comms_task(task, routing)
         elif task_type == "content":
             await run_content_task(task, routing)
+        elif task_type == "code":
+            from agents.coder import code_task
+            result = await code_task(
+                task=task.get("input", ""),
+                context=task.get("module", ""),
+                max_retries=3,
+            )
+            status = "done" if result.passed else "failed"
+            output = result.code if result.passed else f"Tests failed after {result.iterations} attempts:\n{result.test_outputs[-1] if result.test_outputs else ''}"
+            await set_task_status(task["id"], status, output=output)
         else:
             logger.info("[ORCHESTRATOR] Routing %s to generic agent (module: %s)", task_type, module)
             await run_generic_task(task, routing)
