@@ -339,12 +339,50 @@ async def research(
         except Exception as exc:
             logger.error("[RESEARCHER] DB write failed: %s", exc)
 
+    # ── Step 7: shadow storage ─────────────────────────────────
+    _emit("stage", "indexing")
+    _emit("info", "Indexing to ChromaDB + Knowledge Ledger...")
+    try:
+        from systemOS.services.shadow_storage import store_research_output
+        from db import get_conn as _get_conn
+        shadow = await store_research_output(
+            topic=topic,
+            report_text=report,
+            topic_id=topic_id,
+            project_slug=category or "general",
+            category=category or "general",
+            output_file=str(output_file),
+            model=os.environ.get("OLLAMA_MODEL", ""),
+            depth=depth,
+            db_conn_fn=_get_conn,
+        )
+        _emit("info", f"Indexed {shadow['section_count']} sections to ChromaDB")
+        if shadow.get("drive_url"):
+            _emit("info", f"Report uploaded to Drive: {shadow['drive_url']}")
+    except Exception as exc:
+        logger.warning("[RESEARCHER] Shadow storage failed (non-fatal): %s", exc)
+        shadow = {}
+
+    # ── Step 8: push notification ──────────────────────────────
+    try:
+        from systemOS.mcp.notify import notify_done
+        summary_preview = shadow.get("executive_summary", report[:200]).replace("\n", " ")[:120]
+        await notify_done(
+            f"{topic[:60]}\n{summary_preview}",
+            topic="researchos",
+            title=f"Research complete [{cfg['label']}]",
+        )
+    except Exception:
+        pass  # notification is best-effort
+
     return {
         "topic": topic,
         "report": report,
         "queries": queries,
         "sources": [{"url": s["url"], "title": s["title"]} for s in sources],
         "output_file": str(output_file),
+        "executive_summary": shadow.get("executive_summary", ""),
+        "drive_url": shadow.get("drive_url"),
     }
 
 
