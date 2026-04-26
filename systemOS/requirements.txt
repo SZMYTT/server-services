@@ -43,6 +43,11 @@ loguru==0.7.2
 bcrypt==5.0.0
 itsdangerous==2.2.0
 
+# ── Agentic code loop ─────────────────────────────────────────
+pytest>=8.0.0              # test execution in coder agent loop
+ruff>=0.4.0                # fast linting in coder agent loop
+python-on-whales>=0.72.0   # Docker management for sandbox execution
+
 # ── Utilities ─────────────────────────────────────────────────
 uuid==1.30
 python-dateutil==2.9.0
