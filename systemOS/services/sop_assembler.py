@@ -54,6 +54,10 @@ def _layer1_path() -> Path:
     return _SOPS / "system" / "core.md"
 
 
+def _layer15_path(persona: str) -> Path:
+    return _SOPS / "personas" / f"{persona}.md"
+
+
 def _layer2_path(module: str) -> Path:
     return _SOPS / "modules" / f"{module}.md"
 
@@ -68,17 +72,19 @@ def assemble_sop(
     task_type: str,
     module: str,
     workspace: str,
+    persona: str | None = None,
 ) -> str:
     """
     Return the assembled SOP string for a task.
 
     Always includes Layer 1.
+    Layer 1.5 (persona) is injected between Layer 1 and Layer 2 for Expert Panel runs.
     Layer 2 falls back to task_type if no module-specific SOP exists.
     Layer 3 is omitted gracefully if the workspace profile is missing.
 
     Usage:
         sop = assemble_sop("research", "research", "property")
-        # → pass sop as the system prompt to the LLM call
+        sop = assemble_sop("research", "research", "property", persona="architect")
     """
     parts: list[str] = []
 
@@ -92,6 +98,15 @@ def assemble_sop(
             "You are Prisma, a business AI assistant. Be factual, concise, "
             "and use British English. Cite all sources."
         )
+
+    # Layer 1.5 — persona (Expert Panel only: architect / auditor / refiner)
+    if persona:
+        layer15 = _read(_layer15_path(persona))
+        if layer15:
+            parts.append(layer15)
+            logger.info("[SOP] injected persona layer: %s", persona)
+        else:
+            logger.warning("[SOP] persona SOP not found: %s", persona)
 
     # Layer 2 — module (try module name, fall back to task_type)
     layer2 = _read(_layer2_path(module))

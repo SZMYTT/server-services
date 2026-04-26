@@ -135,6 +135,28 @@ async def _ollama(
     return LLMResult(text=text, tokens=tokens, model=model, backend="ollama")
 
 
+# Backwards-compatible alias — older code uses complete_with_usage
+complete_with_usage = complete_ex
+
+
+def log_llm_call(
+    result: LLMResult,
+    service: str = "",
+    call_type: str = "",
+    fast: bool = False,
+) -> None:
+    """Log token usage from a complete_ex / complete_with_usage call."""
+    tokens = result.get("tokens", {})
+    logger.info(
+        "[LLM] service=%s call_type=%s fast=%s model=%s prompt=%d completion=%d total=%d",
+        service, call_type, fast,
+        result.get("model", "?"),
+        tokens.get("prompt", 0),
+        tokens.get("completion", 0),
+        tokens.get("total", 0),
+    )
+
+
 async def _anthropic(
     messages: list[dict],
     fast: bool,

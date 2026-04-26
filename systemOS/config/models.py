@@ -88,6 +88,28 @@ MODELS: dict[str, dict] = {
         "timeout_secs": 30,
         "use":          "semantic embeddings for vector memory / RAG",
     },
+
+    # ── Expert Panel models ───────────────────────────────────
+    # Pull on Mac: ollama pull gemma2:27b && ollama pull gemma2:9b
+    # VRAM: ~18GB + ~7GB + ~7GB = ~32GB total, comfortable on 64GB M1 Max
+    "architect": {
+        "model":        "gemma2:27b",
+        "ollama_url":   OLLAMA_URL,
+        "timeout_secs": 900,
+        "use":          "Expert Panel Architect — expansive thinking, full solution generation",
+    },
+    "auditor": {
+        "model":        "gemma2:9b",
+        "ollama_url":   OLLAMA_URL,
+        "timeout_secs": 300,
+        "use":          "Expert Panel Auditor — adversarial red-team, flaw detection",
+    },
+    "refiner": {
+        "model":        "gemma2:9b",
+        "ollama_url":   OLLAMA_URL,
+        "timeout_secs": 300,
+        "use":          "Expert Panel Refiner — final polish, brand voice, format compliance",
+    },
 }
 
 # ── Task-type → model key ─────────────────────────────────────
@@ -107,7 +129,22 @@ TASK_TYPE_MODEL: dict[str, str] = {
     "vendor":     "researcher",
     "inventory":  "fast",
     "classify":   "fast",
+    "architect":  "architect",
+    "auditor":    "auditor",
+    "refiner":    "refiner",
 }
+
+# ── Expert Panel configs ──────────────────────────────────────
+# Which task types and risk levels trigger the Expert Panel flow.
+EXPERT_PANEL_TASK_TYPES = {"research", "finance", "legal", "content", "code"}
+EXPERT_PANEL_RISK_LEVELS = {"high", "financial", "critical"}
+
+def should_use_expert_panel(task: dict) -> bool:
+    """Return True if this task should be routed through the Expert Panel."""
+    return (
+        task.get("routing_type") == "expert_panel"
+        or task.get("risk_level") in EXPERT_PANEL_RISK_LEVELS
+    )
 
 # ── Module-level overrides ────────────────────────────────────
 # Module is more specific than task_type — override when needed.
