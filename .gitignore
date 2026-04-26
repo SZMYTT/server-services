@@ -15,9 +15,10 @@ build/
 .env
 .env.*
 !.env.example
-config/user_hashes.yaml
-config/google_token.json
-config/google_service_account.json
+**/config/user_hashes.yaml
+**/config/users.yaml
+**/config/google_token.json
+**/config/google_service_account.json
 *.key
 *.pem
 
