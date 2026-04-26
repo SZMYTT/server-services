@@ -101,7 +101,7 @@ def _clear_checkpoint(topic_id: int):
 
 # ── Step 1: generate queries ───────────────────────────────────────────────────
 
-async def _generate_queries(topic: str, n: int = 4) -> list[str]:
+async def _generate_queries(topic: str, n: int = 4) -> tuple[list[str], dict]:
     prompt = f"""I need to research this topic: "{topic}"
 
 Generate exactly {n} specific, targeted search queries that will find the most useful
@@ -119,10 +119,10 @@ Return ONLY a JSON array of strings. No explanation, no markdown, just the array
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
     try:
         queries = json.loads(text)
-        return [q for q in queries if isinstance(q, str)][:n]
+        return [q for q in queries if isinstance(q, str)][:n], usage
     except json.JSONDecodeError:
         logger.warning("[RESEARCHER] Couldn't parse queries JSON, using topic directly")
-        return [topic]
+        return [topic], usage
 
 
 # ── Step 2: gather sources ─────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ async def _scrape_top_sources(sources: list[dict], max_scrape: int = 3) -> list[
 # ── Step 3: synthesise ─────────────────────────────────────────────────────────
 
 async def _synthesise(topic: str, sources: list[dict], sop_hint: Optional[str] = None,
-                      max_tokens: int = 4000) -> str:
+                      max_tokens: int = 4000) -> tuple[str, dict]:
     context_parts = []
     for i, s in enumerate(sources[:12]):
         content = s.get("full_content") or s.get("content", "")
@@ -187,7 +187,7 @@ Use markdown formatting."""
     )
     # topic_id not available here — caller logs it separately
     log_llm_call(usage, service="researchOS", call_type="synthesis", fast=False)
-    return usage["text"]
+    return usage["text"], usage
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -206,6 +206,9 @@ async def research(
     """
     from systemOS.config.depth import get as get_depth
     cfg = get_depth(depth)
+
+    from systemOS.services.token_tracker import TokenBudget
+    budget = TokenBudget(label=f"research_{depth}")
 
     def _emit(level: str, msg: str):
         logger.info("[RESEARCHER] %s", msg)
@@ -227,7 +230,8 @@ async def research(
     # ── Step 1: queries ────────────────────────────────────────────
     if stage in ("", None):
         _emit("stage", "queries")
-        queries = await _generate_queries(topic, n=n_queries)
+        queries, q_usage = await _generate_queries(topic, n=n_queries)
+        budget.track(q_usage, call="queries")
         _emit("info", f"Generated {len(queries)} search queries")
         for q in queries:
             _emit("query", f"  › {q}")
@@ -274,7 +278,8 @@ async def research(
     if stage in ("", None, "queries", "searched", "scraped"):
         _emit("stage", "synthesising")
         _emit("info", f"Synthesising report (max {cfg['synthesis_tokens']} tokens, depth={cfg['label']})...")
-        report = await _synthesise(topic, sources, sop_hint=sop_hint, max_tokens=cfg["synthesis_tokens"])
+        report, s_usage = await _synthesise(topic, sources, sop_hint=sop_hint, max_tokens=cfg["synthesis_tokens"])
+        budget.track(s_usage, call="synthesis")
         _emit("info", f"Report generated — {len(report):,} characters")
         if topic_id:
             _save_checkpoint(topic_id, {
@@ -340,8 +345,9 @@ async def research(
             logger.error("[RESEARCHER] DB write failed: %s", exc)
 
     # ── Step 7: shadow storage ─────────────────────────────────
+    budget.log_summary()
     _emit("stage", "indexing")
-    _emit("info", "Indexing to ChromaDB + Knowledge Ledger...")
+    _emit("info", f"Indexing to ChromaDB + Knowledge Ledger... (total tokens: {budget.total:,})")
     try:
         from systemOS.services.shadow_storage import store_research_output
         from db import get_conn as _get_conn
@@ -359,6 +365,12 @@ async def research(
         _emit("info", f"Indexed {shadow['section_count']} sections to ChromaDB")
         if shadow.get("drive_url"):
             _emit("info", f"Report uploaded to Drive: {shadow['drive_url']}")
+        # Write token total into research_index row
+        if topic_id:
+            try:
+                budget.flush_to_column(_get_conn, "supply.research_index", "topic_id", topic_id)
+            except Exception:
+                pass
     except Exception as exc:
         logger.warning("[RESEARCHER] Shadow storage failed (non-fatal): %s", exc)
         shadow = {}
@@ -368,7 +380,7 @@ async def research(
         from systemOS.mcp.notify import notify_done
         summary_preview = shadow.get("executive_summary", report[:200]).replace("\n", " ")[:120]
         await notify_done(
-            f"{topic[:60]}\n{summary_preview}",
+            f"{topic[:60]}\n{summary_preview}\n[{budget.total:,} tokens]",
             topic="researchos",
             title=f"Research complete [{cfg['label']}]",
         )

@@ -36,6 +36,9 @@ from systemOS.llm import complete_ex, LLMResult
 from systemOS.config.models import MODELS
 from systemOS.services.sop_assembler import assemble_sop
 from systemOS.services.queue import set_task_status
+from systemOS.services.token_tracker import TokenBudget
+
+MAX_CORRECTION_PASSES = 2  # Architect re-runs if Auditor returns FAIL
 
 logger = logging.getLogger("systemos.expert_panel")
 
@@ -169,6 +172,40 @@ async def _run_refiner(
     return result["text"], result
 
 
+async def _run_architect_correction(
+    original_output: str,
+    critique: str,
+    task: dict,
+) -> tuple[str, LLMResult]:
+    """Re-run the Architect with its original output + Auditor critique to fix FAIL issues."""
+    sop = assemble_sop(
+        task_type=task.get("task_type", "research"),
+        module=task.get("module", "research"),
+        workspace=task.get("workspace", ""),
+        persona="architect",
+    )
+    model = MODELS["architect"]["model"]
+
+    correction_prompt = (
+        f"Original task: {task.get('input', '')}\n\n"
+        f"Your previous output:\n{original_output}\n\n"
+        f"Auditor critique (verdict: FAIL):\n{critique}\n\n"
+        "The Auditor found critical errors in your output. "
+        "Produce a corrected version that fixes every CRITICAL and MAJOR issue listed. "
+        "Keep all correct parts unchanged. Address only the flagged issues."
+    )
+
+    logger.info("[PANEL] Architect correction pass — model=%s", model)
+    result = await complete_ex(
+        messages=[{"role": "user", "content": correction_prompt}],
+        system=sop,
+        max_tokens=4000,
+        model=model,
+    )
+    logger.info("[PANEL] Architect correction done — tokens=%d", result["tokens"]["total"])
+    return result["text"], result
+
+
 def _parse_verdict(critique: str) -> str:
     """Extract the VERDICT line from Auditor critique."""
     match = re.search(r"VERDICT:\s*(PASS WITH FIXES|PASS|FAIL)", critique, re.IGNORECASE)
@@ -183,12 +220,20 @@ def _is_escalated(final_output: str) -> bool:
 
 async def expert_panel_runner(task: dict, routing: dict) -> PanelResult:
     """
-    Run the full Expert Panel pipeline for a task.
-    Updates task status in the queue on completion/failure.
+    Run the full Expert Panel pipeline with self-correction loop.
+
+    Flow:
+      1. Architect + Auditor baseline run in parallel
+      2. Auditor critiques Architect output
+      3. If verdict == FAIL: Architect runs a correction pass (max MAX_CORRECTION_PASSES)
+         Loop back to step 2 until PASS/PASS WITH FIXES or passes exhausted
+      4. Refiner produces final deliverable
+      5. Token totals written to tasks.tokens_used
     """
     task_id = task["id"]
     start = time.monotonic()
     panel = PanelResult()
+    budget = TokenBudget(task_id=task_id, label=f"panel_{task.get('task_type', 'task')}")
 
     try:
         await set_task_status(task_id, "running", output="[Expert Panel] Starting…")
@@ -201,6 +246,8 @@ async def expert_panel_runner(task: dict, routing: dict) -> PanelResult:
         )
         panel.architect_output = arch_text
         panel.risk_checklist = risk_text
+        budget.track(arch_result, call="architect")
+        budget.track(risk_result, call="auditor_baseline")
         panel.tokens["architect"] = arch_result["tokens"]["total"]
         panel.tokens["auditor_base"] = risk_result["tokens"]["total"]
 
@@ -209,43 +256,81 @@ async def expert_panel_runner(task: dict, routing: dict) -> PanelResult:
             output="[Expert Panel] Architect complete. Running critique…"
         )
 
-        # ── Step 2: Auditor Critique ──────────────────────────
-        logger.info("[PANEL] Step 2: Auditor critique")
-        crit_text, crit_result = await _run_auditor_critique(
-            arch_text, risk_text, task
-        )
-        panel.auditor_critique = crit_text
-        panel.verdict = _parse_verdict(crit_text)
-        panel.tokens["auditor_crit"] = crit_result["tokens"]["total"]
+        # ── Step 2+3: Auditor critique with correction loop ───
+        correction_pass = 0
+        arch_text_current = arch_text
 
-        logger.info("[PANEL] Auditor verdict: %s", panel.verdict)
+        while True:
+            logger.info(
+                "[PANEL] Auditor critique (pass %d/%d)",
+                correction_pass + 1, MAX_CORRECTION_PASSES + 1,
+            )
+            crit_text, crit_result = await _run_auditor_critique(
+                arch_text_current, risk_text, task
+            )
+            budget.track(crit_result, call=f"auditor_critique_{correction_pass + 1}")
+            panel.auditor_critique = crit_text
+            panel.verdict = _parse_verdict(crit_text)
+            panel.tokens[f"auditor_crit_{correction_pass}"] = crit_result["tokens"]["total"]
+
+            logger.info(
+                "[PANEL] Verdict: %s (correction pass %d/%d)",
+                panel.verdict, correction_pass, MAX_CORRECTION_PASSES,
+            )
+
+            if panel.verdict != "FAIL" or correction_pass >= MAX_CORRECTION_PASSES:
+                # PASS, PASS WITH FIXES, UNKNOWN — or exhausted correction budget
+                if panel.verdict == "FAIL":
+                    logger.warning(
+                        "[PANEL] Still FAIL after %d correction passes — proceeding to Refiner",
+                        MAX_CORRECTION_PASSES,
+                    )
+                break
+
+            # FAIL with correction budget remaining — re-run Architect
+            correction_pass += 1
+            await set_task_status(
+                task_id, "running",
+                output=f"[Expert Panel] Auditor FAIL — Architect correction pass {correction_pass}…"
+            )
+            corrected_text, corrected_result = await _run_architect_correction(
+                arch_text_current, crit_text, task
+            )
+            budget.track(corrected_result, call=f"architect_correction_{correction_pass}")
+            panel.tokens[f"architect_correction_{correction_pass}"] = corrected_result["tokens"]["total"]
+            arch_text_current = corrected_text
+            logger.info("[PANEL] Architect correction complete — looping to re-audit")
+
+        panel.architect_output = arch_text_current  # use the corrected version
+
         await set_task_status(
             task_id, "running",
-            output=f"[Expert Panel] Auditor verdict: {panel.verdict}. Refining…"
+            output=f"[Expert Panel] Verdict: {panel.verdict}. Refining…"
         )
 
-        # ── Step 3: Refiner ────────────────────────────────────
-        logger.info("[PANEL] Step 3: Refiner")
-        final_text, final_result = await _run_refiner(arch_text, crit_text, task)
+        # ── Step 4: Refiner ────────────────────────────────────
+        logger.info("[PANEL] Step 4: Refiner")
+        final_text, final_result = await _run_refiner(arch_text_current, crit_text, task)
         panel.final_output = final_text
         panel.escalated = _is_escalated(final_text)
+        budget.track(final_result, call="refiner")
         panel.tokens["refiner"] = final_result["tokens"]["total"]
 
         panel.duration_ms = int((time.monotonic() - start) * 1000)
-        total_tokens = sum(panel.tokens.values())
+
+        # ── Step 5: Persist token totals ──────────────────────
+        budget.log_summary()
 
         if panel.escalated:
             logger.warning("[PANEL] Escalation required for task %s", task_id[:8])
-            await set_task_status(
-                task_id, "pending_approval",
-                output=final_text,
-            )
+            await set_task_status(task_id, "pending_approval", output=final_text)
         else:
             await set_task_status(task_id, "done", output=final_text)
 
         logger.info(
-            "[PANEL] Complete — verdict=%s escalated=%s tokens=%d duration=%dms",
-            panel.verdict, panel.escalated, total_tokens, panel.duration_ms,
+            "[PANEL] Complete — verdict=%s corrections=%d escalated=%s tokens=%d duration=%dms",
+            panel.verdict, correction_pass, panel.escalated,
+            budget.total, panel.duration_ms,
         )
 
     except Exception as e:
