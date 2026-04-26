@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Auction Alerts — Cars — PrismaOS{% endblock %}
+{% block page_title %}Auction Alerts{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Cars · Monitor auction listings</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+{% set new_count = auctions | selectattr('status','eq','new') | list | length %}
+{% set reviewed = auctions | selectattr('status','eq','reviewed') | list | length %}
+{% set won = auctions | selectattr('status','eq','won') | list | length %}
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Alerts</span>
+    <div class="stat-number">{{ auctions | length }}</div>
+    <div class="stat-trend">All sources</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">New</span>
+    <div class="stat-number" style="{% if new_count > 0 %}color:var(--c-gold-dark){% endif %}">{{ new_count }}</div>
+    <div class="stat-trend">Needs review</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Reviewed</span>
+    <div class="stat-number">{{ reviewed }}</div>
+    <div class="stat-trend">Assessed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Won</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ won }}</div>
+    <div class="stat-trend">Acquired</div>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Listings</h2>
+  <div class="flex gap-8">
+    <a href="/cars/task" class="btn btn-ghost btn-sm">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3"/></svg>
+      Run AI Scan
+    </a>
+    <button class="btn btn-secondary" onclick="openModal('addAuctionModal')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add Alert
+    </button>
+  </div>
+</div>
+
+<!-- Status filters -->
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterStatus('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('new')">New</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('reviewed')">Reviewed</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('bid')">Bid</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('won')">Won</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('passed')">Passed</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if auctions %}
+  <table class="data-table" id="auctions-table">
+    <thead>
+      <tr>
+        <th>Vehicle</th>
+        <th>Source</th>
+        <th>Price</th>
+        <th>Mileage</th>
+        <th>Auction Date</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in auctions %}
+      <tr data-status="{{ a.status }}">
+        <td>
+          <div class="td-primary">{{ a.title }}</div>
+          {% if a.notes %}<div style="font-size:12px; color:var(--c-text-muted); margin-top:2px; max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ a.notes }}</div>{% endif %}
+        </td>
+        <td><span class="badge badge-source-{{ a.source }}">{{ a.source | upper }}</span></td>
+        <td class="td-primary">{% if a.asking_price %}£{{ "{:,.0f}".format(a.asking_price|float) }}{% else %}—{% endif %}</td>
+        <td class="td-mono">{% if a.mileage %}{{ "{:,}".format(a.mileage) }} mi{% else %}—{% endif %}</td>
+        <td class="td-mono">{{ a.auction_date.strftime('%d %b %Y') if a.auction_date else '—' }}</td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:110px;" onchange="updateAuction('{{ a.id }}', this.value)">
+            {% for s in ['new','reviewed','bid','won','passed'] %}
+            <option value="{{ s }}" {% if s == a.status %}selected{% endif %}>{{ s | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          {% if a.listing_url %}
+          <a href="{{ a.listing_url }}" target="_blank" class="btn btn-xs btn-ghost">View</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+    <h3>No auction alerts</h3>
+    <p>Run an AI scan or manually add listings to track.</p>
+    <button class="btn btn-secondary" onclick="openModal('addAuctionModal')">Add Alert</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Auction Modal -->
+<div class="modal-backdrop" id="addAuctionModal" style="display:none;" onclick="closeModal('addAuctionModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Auction Alert</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Title *</label>
+          <input class="form-input" id="a-title" placeholder="e.g. 2019 BMW 3 Series 320d M Sport" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Source *</label>
+            <select class="form-input form-select" id="a-source">
+              <option value="bca">BCA</option>
+              <option value="manheim">Manheim</option>
+              <option value="facebook">Facebook</option>
+              <option value="autotrader">Autotrader</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Asking Price (£)</label>
+            <input class="form-input" id="a-price" type="number" placeholder="0" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Mileage</label>
+            <input class="form-input" id="a-mileage" type="number" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Auction Date</label>
+            <input class="form-input" id="a-date" type="date" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Listing URL</label>
+          <input class="form-input" id="a-url" placeholder="https://..." />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="a-notes" rows="2" placeholder="Condition notes, history, why it's interesting..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addAuctionModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitAuction()">Add Alert</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-source-bca       { background: rgba(0,84,166,.12); color:#004F9E; }
+  .badge-source-manheim   { background: rgba(0,150,80,.12); color:#006640; }
+  .badge-source-facebook  { background: rgba(24,119,242,.12); color:#1252A0; }
+  .badge-source-autotrader { background: rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-source-other     { background: var(--c-card-border); color: var(--c-text-muted); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStatus(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#auctions-table tbody tr').forEach(row => {
+      row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+  }
+  async function updateAuction(id, status) {
+    const r = await fetch(`/api/erp/cars/auctions/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitAuction() {
+    const p = {
+      source: document.getElementById('a-source').value,
+      title: document.getElementById('a-title').value,
+      listing_url: document.getElementById('a-url').value,
+      asking_price: parseFloat(document.getElementById('a-price').value) || null,
+      mileage: parseInt(document.getElementById('a-mileage').value) || null,
+      auction_date: document.getElementById('a-date').value || null,
+      notes: document.getElementById('a-notes').value,
+    };
+    if (!p.title) { toast('Title required', 'error'); return; }
+    const r = await fetch('/api/erp/cars/auctions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Alert added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

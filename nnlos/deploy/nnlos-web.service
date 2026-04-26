@@ -1,0 +1,17 @@
+[Unit]
+Description=NNLOS Web Service
+After=network.target systemos-postgres.service
+
+[Service]
+Type=simple
+User=szmyt
+WorkingDirectory=/home/szmyt/server-services/nnlos
+EnvironmentFile=/home/szmyt/server-services/nnlos/.env
+ExecStart=/home/szmyt/server-services/nnlos/.venv/bin/uvicorn web.app:app --host 0.0.0.0 --port 4000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Global Queue — PrismaOS{% endblock %}
+{% block page_title %}Global Queue{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">All tasks across every workspace — sorted by priority score.</p>{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-24">
+  <div class="flex gap-8" style="flex-wrap:wrap;">
+    <button onclick="filterTasks('all')" class="btn btn-sm btn-ghost active-filter" id="filter-all">All</button>
+    <button onclick="filterTasks('queued')" class="btn btn-sm btn-ghost" id="filter-queued">Queued</button>
+    <button onclick="filterTasks('pending_approval')" class="btn btn-sm btn-ghost" id="filter-pending">Pending Approval</button>
+    <button onclick="filterTasks('running')" class="btn btn-sm btn-ghost" id="filter-running">Running</button>
+    <button onclick="filterTasks('done')" class="btn btn-sm btn-ghost" id="filter-done">Done</button>
+  </div>
+  <span style="font-size:13px; color:var(--c-text-muted);">{{ tasks | length }} tasks</span>
+</div>
+
+{% if tasks %}
+<div class="card" style="padding:0; overflow:hidden;">
+  <table class="data-table" id="task-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Task</th>
+        <th>Workspace</th>
+        <th>Status</th>
+        <th>Risk</th>
+        <th>Requested by</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tasks %}
+      <tr class="task-table-row" data-status="{{ t.status }}">
+        <td style="width:4px; padding:0;">
+          <div style="width:4px; height:100%; background-color: {% if t.risk_level == 'financial' %}var(--c-status-fin){% elif t.risk_level == 'public' %}var(--c-status-public){% else %}var(--c-status-internal){% endif %};"></div>
+        </td>
+        <td>
+          <div class="td-primary">{{ t.task_type | replace('_',' ') | title }}</div>
+          <div class="td-mono">{{ t.id[:8] if t.id else '—' }}</div>
+        </td>
+        <td><span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span></td>
+        <td><span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span></td>
+        <td><span class="badge badge-{{ t.risk_level }}">{{ t.risk_level }}</span></td>
+        <td style="font-size:13px; color:var(--c-text-muted);">{{ t.user_name }}</td>
+        <td class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '—' }}</td>
+        <td>
+          {% if t.status in ('queued', 'pending_approval') and user.role == 'operator' %}
+          <div class="task-row-actions">
+            <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+            <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+          </div>
+          {% elif t.output %}
+          <button class="btn btn-xs btn-ghost" onclick="showOutput('{{ t.id | replace("'","") }}', `{{ t.output | replace("`","'") | truncate(2000) }}`)">View</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+    <h3>Queue is empty</h3>
+    <p>No tasks have been submitted yet across any workspace.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Output modal -->
+<div class="modal-backdrop" id="output-modal" style="display:none;" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modal-task-id">Task Output</h3>
+    </div>
+    <div class="modal-body">
+      <pre id="modal-output" style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--c-text-secondary); line-height:1.7; white-space:pre-wrap; word-break:break-word; max-height:400px; overflow-y:auto;"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function filterTasks(status) {
+    document.querySelectorAll('.task-table-row').forEach(row => {
+      if (status === 'all' || row.dataset.status === status) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    document.querySelectorAll('[id^="filter-"]').forEach(btn => btn.classList.remove('active-filter'));
+    document.getElementById('filter-' + status)?.classList.add('active-filter');
+  }
+  async function approveTask(id) {
+    await fetch(`/api/tasks/${id}/approve`, {method:'POST'});
+    location.reload();
+  }
+  async function declineTask(id) {
+    await fetch(`/api/tasks/${id}/decline`, {method:'POST'});
+    location.reload();
+  }
+  function showOutput(id, output) {
+    document.getElementById('modal-task-id').textContent = 'Task ' + id;
+    document.getElementById('modal-output').textContent = output;
+    document.getElementById('output-modal').style.display = 'flex';
+  }
+  function closeModal() {
+    document.getElementById('output-modal').style.display = 'none';
+  }
+</script>
+<style>
+  .active-filter { background-color:var(--c-text-primary) !important; color:var(--c-canvas) !important; }
+</style>
+{% endblock %}

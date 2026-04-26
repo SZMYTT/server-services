@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}ResearchOS{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/static/css/supplyos.css" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <a href="/library" class="header-logo">
+      <svg class="header-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+      </svg>
+      ResearchOS
+    </a>
+
+    <div class="header-breadcrumb">
+      {% block header_breadcrumb %}{% endblock %}
+    </div>
+
+    <div class="header-right">
+      <div class="header-status" id="llm-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-label">connecting…</span>
+      </div>
+      {% if user %}
+      <a href="/logout" title="Sign out">
+        <div class="header-avatar">{{ user.username[0].upper() }}</div>
+      </a>
+      {% endif %}
+    </div>
+
+    <button class="mobile-menu-btn" onclick="toggleSidebar()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- BODY -->
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <aside class="app-sidebar" id="sidebar">
+
+      <div class="sidebar-section-label">Research</div>
+      <nav>
+        <a href="/library" class="sidebar-nav-item {% if active_route == 'library' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+          </svg>
+          Library
+        </a>
+      </nav>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section-label">Projects</div>
+      <nav>
+        <a href="/vendors" class="sidebar-nav-item {% if active_route == 'vendors' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+          </svg>
+          Vendor Intelligence
+        </a>
+        {% for p in projects %}
+        <a href="/p/{{ p.slug }}" class="sidebar-nav-item {% if active_project == p.slug %}active{% endif %}">
+          <span class="nav-icon">{{ p.icon }}</span>
+          {{ p.name }}
+        </a>
+        {% endfor %}
+      </nav>
+
+      <div class="sidebar-divider"></div>
+      <nav>
+        <a href="/library#new-project" onclick="openModal('modal-new-project'); return false;"
+           class="sidebar-nav-item" style="opacity:0.7; font-size:12.5px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          New project
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        {% if user %}
+        <div class="sidebar-footer-avatar">{{ user.username[0].upper() }}</div>
+        <div>
+          <div class="sidebar-footer-name">{{ user.get('display_name', user.username) }}</div>
+          <div class="sidebar-footer-role">{{ user.get('role', 'user') }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- MAIN -->
+    <main class="app-main" id="main-content">
+      <div class="page-content fade-in">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay hidden" id="modal-new-project">
+  <div class="modal">
+    <h2 class="modal-title">New project</h2>
+    <form method="POST" action="/library/new">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Project name</label>
+        <input class="form-input" name="name" placeholder="e.g. NNL Supply Chain" required autofocus />
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Description (optional)</label>
+        <input class="form-input" name="description" placeholder="What kind of research lives here?" />
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="form-group">
+          <label class="form-label">Icon (emoji)</label>
+          <input class="form-input" name="icon" value="📚" maxlength="4" style="max-width:80px;" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-project')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create project</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+  // LLM status check
+  fetch('/api/llm-status').then(r => r.json()).then(d => {
+    const dot = document.getElementById('status-dot');
+    const label = document.getElementById('status-label');
+    if (d.ok) {
+      dot.classList.remove('offline');
+      label.textContent = d.model;
+    } else {
+      dot.classList.add('offline');
+      label.textContent = 'LLM offline';
+    }
+  }).catch(() => {
+    document.getElementById('status-dot').classList.add('offline');
+    document.getElementById('status-label').textContent = 'LLM offline';
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

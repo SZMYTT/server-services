@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}SystemOS{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/static/css/base.css" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <a href="{% block home_url %}/{% endblock %}" class="header-logo">
+      {% block logo_icon %}
+      <svg class="header-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+      </svg>
+      {% endblock %}
+      {% block app_name %}SystemOS{% endblock %}
+    </a>
+
+    <div class="header-breadcrumb">
+      {% block header_breadcrumb %}{% endblock %}
+    </div>
+
+    <div class="header-right">
+      <div class="header-status" id="llm-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-label">connecting…</span>
+      </div>
+      {% if user %}
+      <a href="/logout" title="Sign out">
+        <div class="header-avatar">{{ user.username[0].upper() }}</div>
+      </a>
+      {% endif %}
+    </div>
+
+    <button class="mobile-menu-btn" onclick="toggleSidebar()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- BODY -->
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <aside class="app-sidebar" id="sidebar">
+      {% block sidebar %}{% endblock %}
+
+      <div class="sidebar-footer">
+        {% if user %}
+        <div class="sidebar-footer-avatar">{{ user.username[0].upper() }}</div>
+        <div>
+          <div class="sidebar-footer-name">{{ user.get('display_name', user.username) }}</div>
+          <div class="sidebar-footer-role">{{ user.get('role', 'user') }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- MAIN -->
+    <main class="app-main" id="main-content">
+      <div class="page-content fade-in">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+  </div>
+</div>
+
+{% block modals %}{% endblock %}
+
+<script src="/static/js/main.js"></script>
+<script>
+  fetch('/api/llm-status').then(r => r.json()).then(d => {
+    const dot = document.getElementById('status-dot');
+    const label = document.getElementById('status-label');
+    if (d.ok) { dot.classList.remove('offline'); label.textContent = d.model; }
+    else { dot.classList.add('offline'); label.textContent = 'LLM offline'; }
+  }).catch(() => {
+    document.getElementById('status-dot').classList.add('offline');
+    document.getElementById('status-label').textContent = 'LLM offline';
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

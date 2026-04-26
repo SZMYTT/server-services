@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ topic }} — supplyOS{% endblock %}
+{% block header_breadcrumb %}
+  <a href="/library" style="color:var(--c-text-on-dark-m);">Library</a>
+  <span>/</span>
+  {% if project %}
+  <a href="/p/{{ project.slug }}" style="color:var(--c-text-on-dark-m);">{{ project.name }}</a>
+  <span>/</span>
+  {% endif %}
+  <span>Report</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="breadcrumb">
+    <a href="/library">Library</a>
+    <span class="breadcrumb-sep">/</span>
+    {% if project %}
+    <a href="/p/{{ project.slug }}">{{ project.name }}</a>
+    <span class="breadcrumb-sep">/</span>
+    {% endif %}
+    <span>Report</span>
+  </div>
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <h1 class="page-title">{{ topic }}</h1>
+      <p class="page-subtitle">
+        Generated {{ created_at.strftime('%d %b %Y at %H:%M') if created_at else '' }}
+        {% if model %} · {{ model }}{% endif %}
+      </p>
+    </div>
+    <div style="display:flex; gap:8px; flex-shrink:0;">
+      {% if project %}
+      <a href="/p/{{ project.slug }}" class="btn btn-secondary btn-sm">← Back to {{ project.name }}</a>
+      {% else %}
+      <a href="/library" class="btn btn-secondary btn-sm">← Library</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 280px; gap:24px; align-items:start;">
+
+  <!-- Report body -->
+  <div class="card">
+    <div class="report-body">{{ report_html | safe }}</div>
+  </div>
+
+  <!-- Sidebar: sources + queries -->
+  <div>
+    {% if queries %}
+    <div class="card" style="margin-bottom:16px;">
+      <div style="font-size:11px; font-weight:500; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Search queries</div>
+      {% for q in queries %}
+      <div style="font-size:12.5px; color:var(--c-text-secondary); padding:5px 0; border-bottom:1px solid var(--c-card-border);">{{ q }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if sources %}
+    <div class="card">
+      <div style="font-size:11px; font-weight:500; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Sources ({{ sources|length }})</div>
+      <ul class="sources-list">
+        {% for s in sources %}
+        <li>
+          <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if output_file %}
+    <div style="margin-top:12px; font-size:11.5px; color:var(--c-text-muted); font-family:'JetBrains Mono',monospace; word-break:break-all;">{{ output_file }}</div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block head %}
+<style>
+  @media (max-width: 900px) {
+    .report-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+{% endblock %}

@@ -1,0 +1,15 @@
+[Unit]
+Description=PrismaOS Discord Bot
+After=network.target
+
+[Service]
+User=szmyt
+Group=szmyt
+WorkingDirectory=/home/szmyt/server-services/prismaOS
+EnvironmentFile=/home/szmyt/server-services/prismaOS/.env
+ExecStart=/home/szmyt/server-services/prismaOS/venv/bin/python3 -m bot.discord_bot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book an Appointment — Asta's Nursing & Massage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" /></noscript>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --purple:       #7B5EA7;
+      --purple-light: #9B7EC7;
+      --purple-dark:  #5B3E87;
+      --purple-bg:    #F4F0FA;
+      --bg:           #FAFAF8;
+      --surface:      #FFFFFF;
+      --border:       #E8E2F0;
+      --text:         #1A1628;
+      --muted:        #6B6080;
+      --success:      #2E7D52;
+      --success-bg:   #EAF7F0;
+      --radius:       12px;
+      --shadow:       0 2px 12px rgba(123,94,167,.10);
+    }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ────────────────────────────────────────────── */
+    .site-header {
+      background: var(--purple);
+      color: #fff;
+      padding: 32px 24px 28px;
+      text-align: center;
+    }
+    .site-header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(24px, 5vw, 36px);
+      font-weight: 600;
+      letter-spacing: -.3px;
+    }
+    .site-header p {
+      margin-top: 8px;
+      font-size: 15px;
+      opacity: .85;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 32px 16px 64px;
+    }
+
+    /* ── Section headings ───────────────────────────────────── */
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--purple-dark);
+      margin-bottom: 16px;
+    }
+
+    /* ── Services ───────────────────────────────────────────── */
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .service-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .service-card:hover { border-color: var(--purple-light); }
+    .service-card.selected {
+      border-color: var(--purple);
+      background: var(--purple-bg);
+    }
+    .service-card-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .service-card-meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .service-card-price {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--purple);
+      margin-top: 8px;
+    }
+
+    /* ── Form ───────────────────────────────────────────────── */
+    .form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+    .form-row { display: grid; gap: 16px; margin-bottom: 16px; }
+    .form-row.two { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 480px) { .form-row.two { grid-template-columns: 1fr; } }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    input, select, textarea {
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--purple); }
+    textarea { resize: vertical; min-height: 80px; }
+    .required-star { color: var(--purple); }
+
+    /* ── Submit button ──────────────────────────────────────── */
+    .btn-book {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      background: var(--purple);
+      color: #fff;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+    }
+    .btn-book:hover { background: var(--purple-dark); }
+    .btn-book:active { transform: scale(.98); }
+    .btn-book:disabled { background: #B0A0C8; cursor: not-allowed; }
+
+    /* ── Success state ──────────────────────────────────────── */
+    #success-panel {
+      display: none;
+      background: var(--success-bg);
+      border: 1.5px solid #A8D5B8;
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+    }
+    #success-panel svg { color: var(--success); margin-bottom: 12px; }
+    #success-panel h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px;
+      color: var(--success);
+      margin-bottom: 8px;
+    }
+    #success-panel p { color: #3A6A50; font-size: 15px; }
+
+    /* ── Error message ──────────────────────────────────────── */
+    #error-msg {
+      display: none;
+      background: #FEF2F2;
+      border: 1.5px solid #FCA5A5;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #991B1B;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .site-footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <h1>Asta's Nursing &amp; Massage</h1>
+  <p>Professional treatments — electric glove therapy &amp; massage</p>
+</header>
+
+<div class="container">
+
+  <!-- Services -->
+  {% if services %}
+  <p class="section-title">Choose a Service</p>
+  <div class="services-grid" id="services-grid">
+    {% for s in services %}
+    <div class="service-card" data-id="{{ s.id }}" data-name="{{ s.name }}" data-duration="{{ s.duration_mins }}" onclick="selectService(this)">
+      <div class="service-card-name">{{ s.name }}</div>
+      <div class="service-card-meta">{{ s.duration_mins }} min · {{ s.category | title }}</div>
+      <div class="service-card-price">£{{ "%.0f"|format(s.price|float) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Booking form -->
+  <div id="booking-form-wrap">
+    <p class="section-title">Your Details</p>
+    <div class="form-card">
+
+      <div id="error-msg"></div>
+
+      <div class="form-row two">
+        <div class="form-group">
+          <label>Full Name <span class="required-star">*</span></label>
+          <input id="f-name" type="text" placeholder="Jane Smith" autocomplete="name" />
+        </div>
+        <div class="form-group">
+          <label>Phone <span class="required-star">*</span></label>
+          <input id="f-phone" type="tel" placeholder="+44 7..." autocomplete="tel" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input id="f-email" type="email" placeholder="jane@example.com" autocomplete="email" />
+        </div>
+      </div>
+
+      <div class="form-row two">
+        <div class="form-group">
+          <label>Preferred Date <span class="required-star">*</span></label>
+          <input id="f-date" type="date" />
+        </div>
+        <div class="form-group">
+          <label>Preferred Time <span class="required-star">*</span></label>
+          <input id="f-time" type="time" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Any notes or questions?</label>
+          <textarea id="f-notes" placeholder="Medical conditions, preferences, parking info..."></textarea>
+        </div>
+      </div>
+
+      <input type="hidden" id="f-service-id" />
+      <input type="hidden" id="f-service-name" />
+
+      <button class="btn-book" id="submit-btn" onclick="submitBooking()">Request Appointment</button>
+    </div>
+  </div>
+
+  <!-- Success panel -->
+  <div id="success-panel">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <h2>Booking Request Sent!</h2>
+    <p id="success-detail">Asta will be in touch to confirm your appointment.</p>
+  </div>
+
+</div>
+
+<footer class="site-footer">
+  Asta's Nursing &amp; Massage &nbsp;·&nbsp; Home visits &amp; clinic appointments
+</footer>
+
+<script>
+  // Set min date to today
+  document.getElementById('f-date').min = new Date().toISOString().split('T')[0];
+
+  let selectedServiceId = null;
+  let selectedServiceName = null;
+
+  function selectService(card) {
+    document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedServiceId = card.dataset.id;
+    selectedServiceName = card.dataset.name;
+    document.getElementById('f-service-id').value = selectedServiceId;
+    document.getElementById('f-service-name').value = selectedServiceName;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function hideError() {
+    document.getElementById('error-msg').style.display = 'none';
+  }
+
+  async function submitBooking() {
+    hideError();
+
+    const name    = document.getElementById('f-name').value.trim();
+    const phone   = document.getElementById('f-phone').value.trim();
+    const email   = document.getElementById('f-email').value.trim();
+    const date    = document.getElementById('f-date').value;
+    const time    = document.getElementById('f-time').value;
+    const notes   = document.getElementById('f-notes').value.trim();
+    const svcId   = document.getElementById('f-service-id').value;
+    const svcName = document.getElementById('f-service-name').value;
+
+    if (!name)    { showError('Please enter your full name.'); return; }
+    if (!phone)   { showError('Please enter your phone number so Asta can reach you.'); return; }
+    if (!date)    { showError('Please choose a preferred date.'); return; }
+    if (!time)    { showError('Please choose a preferred time.'); return; }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      const resp = await fetch('/api/public/book/nursing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name:    name,
+          phone:          phone,
+          email:          email,
+          service_id:     svcId || null,
+          service_name:   svcName || 'To be discussed',
+          preferred_date: date,
+          preferred_time: time,
+          notes:          notes,
+        }),
+      });
+      const data = await resp.json();
+
+      if (data.success) {
+        document.getElementById('booking-form-wrap').style.display = 'none';
+        const servicesGrid = document.getElementById('services-grid');
+        if (servicesGrid) servicesGrid.closest('*').style.display = 'none';
+        document.querySelectorAll('.section-title').forEach(el => el.style.display = 'none');
+        const detail = svcName
+          ? `Your request for <strong>${svcName}</strong> on ${date} at ${time} has been received.`
+          : `Your request for ${date} at ${time} has been received.`;
+        document.getElementById('success-detail').innerHTML = detail + ' Asta will be in touch to confirm.';
+        document.getElementById('success-panel').style.display = 'block';
+        document.getElementById('success-panel').scrollIntoView({ behavior: 'smooth' });
+      } else {
+        showError('Something went wrong. Please try again or contact us directly.');
+        btn.disabled = false;
+        btn.textContent = 'Request Appointment';
+      }
+    } catch (err) {
+      showError('Could not send your request. Please check your connection and try again.');
+      btn.disabled = false;
+      btn.textContent = 'Request Appointment';
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Research — Property — PrismaOS{% endblock %}
+{% block page_title %}Research Watchlist{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Property · Monitor listings before committing to a deal</p>{% endblock %}
+
+{% block content %}
+
+{% set watching = watchlist | selectattr('status','eq','watching') | list %}
+{% set contacted = watchlist | selectattr('status','eq','contacted') | list %}
+{% set viewing = watchlist | selectattr('status','eq','viewing_booked') | list %}
+
+<!-- Stats -->
+<div class="grid-3 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Watching</span>
+    <div class="stat-number">{{ watching | length }}</div>
+    <div class="stat-trend">On the radar</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Contacted</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ contacted | length }}</div>
+    <div class="stat-trend">Reached out</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Viewings Booked</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ viewing | length }}</div>
+    <div class="stat-trend">Scheduled visits</div>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Watchlist</h2>
+  <div class="flex gap-8">
+    <a href="/property/task" class="btn btn-ghost btn-sm">AI Property Scan</a>
+    <button class="btn btn-secondary" onclick="openModal('addWatchModal')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add Property
+    </button>
+  </div>
+</div>
+
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterStatus('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('watching')">Watching</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('contacted')">Contacted</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('viewing_booked')">Viewing Booked</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if watchlist %}
+  <table class="data-table" id="watchlist-table">
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>Type</th>
+        <th>Asking Price</th>
+        <th>Source</th>
+        <th>Status</th>
+        <th>Added</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in watchlist %}
+      <tr data-status="{{ p.status }}">
+        <td>
+          <div class="td-primary">{{ p.address }}</div>
+          {% if p.postcode %}<div class="td-mono">{{ p.postcode }}</div>{% endif %}
+          {% if p.notes %}<div style="font-size:12px; color:var(--c-text-muted); margin-top:2px; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.notes }}</div>{% endif %}
+        </td>
+        <td>
+          {% if p.property_type %}<span class="badge badge-internal">{{ p.property_type | title }}</span>{% endif %}
+          {% if p.bedrooms %}<div style="font-size:12px; color:var(--c-text-muted); margin-top:2px;">{{ p.bedrooms }} bed</div>{% endif %}
+        </td>
+        <td class="td-primary">{% if p.asking_price %}£{{ "{:,.0f}".format(p.asking_price|float) }}{% else %}—{% endif %}</td>
+        <td><span class="badge badge-watch-{{ p.source or 'other' }}">{{ (p.source or '—') | title }}</span></td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:150px;" onchange="updateWatch('{{ p.id }}', this.value)">
+            {% for s in ['watching','contacted','viewing_booked','archived'] %}
+            <option value="{{ s }}" {% if s == p.status %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="td-mono">{{ p.found_at.strftime('%d %b %Y') if p.found_at else '—' }}</td>
+        <td>
+          {% if p.listing_url %}<a href="{{ p.listing_url }}" target="_blank" class="btn btn-xs btn-ghost">View</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    <h3>Nothing on the watchlist</h3>
+    <p>Track properties you're researching before committing to a deal.</p>
+    <button class="btn btn-secondary" onclick="openModal('addWatchModal')">Add Property</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add to Watchlist Modal -->
+<div class="modal-backdrop" id="addWatchModal" style="display:none;" onclick="closeModal('addWatchModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>Add to Watchlist</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Address *</label>
+          <input class="form-input" id="w-address" placeholder="Property address" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Postcode</label>
+            <input class="form-input" id="w-postcode" placeholder="e.g. M1 1AA" />
+          </div>
+          <div>
+            <label class="form-label">Source</label>
+            <select class="form-input form-select" id="w-source">
+              <option value="rightmove">Rightmove</option>
+              <option value="zoopla">Zoopla</option>
+              <option value="onthemarket">OnTheMarket</option>
+              <option value="auction">Auction</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Asking Price (£)</label>
+            <input class="form-input" id="w-price" type="number" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Bedrooms</label>
+            <input class="form-input" id="w-beds" type="number" placeholder="0" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Property Type</label>
+            <select class="form-input form-select" id="w-type">
+              <option value="">— Select —</option>
+              <option value="terraced">Terraced</option>
+              <option value="semi">Semi-detached</option>
+              <option value="detached">Detached</option>
+              <option value="flat">Flat</option>
+              <option value="commercial">Commercial</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Listing URL</label>
+            <input class="form-input" id="w-url" placeholder="https://..." />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="w-notes" rows="2" placeholder="Why it's interesting, condition, proximity..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addWatchModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitWatch()">Add to Watchlist</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-watch-rightmove  { background:rgba(0,123,255,.1); color:#0057B7; }
+  .badge-watch-zoopla     { background:rgba(114,0,255,.1); color:#6200CC; }
+  .badge-watch-onthemarket { background:rgba(0,168,144,.1); color:#007A69; }
+  .badge-watch-auction    { background:rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-watch-private    { background:rgba(78,111,87,.12); color:var(--c-active-dark); }
+  .badge-watch-other      { background:var(--c-card-border); color:var(--c-text-muted); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStatus(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#watchlist-table tbody tr').forEach(row => {
+      row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+  }
+  async function updateWatch(id, status) {
+    const r = await fetch(`/api/erp/property/watchlist/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitWatch() {
+    const p = {
+      address: document.getElementById('w-address').value,
+      postcode: document.getElementById('w-postcode').value,
+      listing_url: document.getElementById('w-url').value,
+      source: document.getElementById('w-source').value,
+      asking_price: parseFloat(document.getElementById('w-price').value) || null,
+      property_type: document.getElementById('w-type').value || null,
+      bedrooms: parseInt(document.getElementById('w-beds').value) || null,
+      notes: document.getElementById('w-notes').value,
+    };
+    if (!p.address) { toast('Address required', 'error'); return; }
+    const r = await fetch('/api/erp/property/watchlist', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Added to watchlist'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

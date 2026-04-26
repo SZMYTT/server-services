@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ ws_name }} — PrismaOS{% endblock %}
+{% block page_title %}{{ ws_name }}{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">{{ ws_owner }} · {{ ws_platform }}</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stat cards -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Tasks Today</span>
+    <div class="stat-number">{{ stats.tasks_today }}</div>
+    <div class="stat-trend">Submitted this session</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Pending</span>
+    <div class="stat-number" style="{% if stats.pending > 0 %}color:var(--c-gold-dark){% endif %}">{{ stats.pending }}</div>
+    <div class="stat-trend">Awaiting approval or run</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Done This Week</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ stats.done_week }}</div>
+    <div class="stat-trend">Completed tasks</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Failed</span>
+    <div class="stat-number" style="{% if stats.failed > 0 %}color:var(--c-error){% endif %}">{{ stats.failed }}</div>
+    <div class="stat-trend">Needs investigation</div>
+  </div>
+</div>
+
+<!-- Two column: recent outputs + schedules -->
+<div class="grid-2">
+
+  <!-- Recent task outputs -->
+  <div>
+    <h2 class="card-title mb-16">Recent Outputs</h2>
+    {% if recent_tasks %}
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        {% for t in recent_tasks %}
+          <div class="card" style="padding:16px;">
+            <div class="flex items-center justify-between mb-8">
+              <div class="flex gap-8 items-center">
+                <span class="badge badge-{{ t.task_type | lower | replace(' ','_') }}">{{ t.task_type | replace('_',' ') }}</span>
+                <span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span>
+              </div>
+              <span class="td-mono">{{ t.completed_at.strftime('%d %b %H:%M') if t.completed_at else (t.created_at.strftime('%d %b %H:%M') if t.created_at else '') }}</span>
+            </div>
+            {% if t.output %}
+              <p style="font-size:13px; color:var(--c-text-secondary); line-height:1.6; margin-top:8px; display: -webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{ t.output[:300] }}</p>
+            {% endif %}
+            {% if t.input %}
+              <p style="font-size:12px; color:var(--c-text-muted); margin-top:6px; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.input[:90] }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          <h3>No outputs yet</h3>
+          <p>Run your first task for this workspace.</p>
+          <a href="/{{ ws_id }}/task" class="btn btn-secondary">New task</a>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Schedules + Pending Approvals -->
+  <div>
+    <div class="flex items-center justify-between mb-16">
+      <h2 class="card-title">Schedules</h2>
+      <a href="/schedules" class="btn btn-ghost btn-sm">Manage</a>
+    </div>
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:24px;">
+      {% if ws_schedules %}
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Next Run</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {% for s in ws_schedules %}
+            <tr>
+              <td>
+                <div class="td-primary">{{ s.name }}</div>
+                <div class="td-mono">{{ s.cron_expression }}</div>
+              </td>
+              <td class="td-mono">{{ s.next_run.strftime('%a %d %b %H:%M') if s.next_run else '—' }}</td>
+              <td><span class="badge badge-{{ 'active' if s.active else 'inactive' }}">{{ 'Active' if s.active else 'Paused' }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-state" style="padding:32px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <h3>No schedules</h3>
+          <p>Set up automated recurring tasks.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if pending_tasks %}
+    <div>
+      <h2 class="card-title mb-16">Awaiting Approval</h2>
+      <div style="display:flex; flex-direction:column;">
+        {% for t in pending_tasks %}
+          <div class="task-row risk-{{ t.risk_level }}">
+            <div class="task-row-content">
+              <div class="task-row-title">{{ t.input[:80] if t.input else t.task_type | replace('_',' ') | title }}</div>
+              <div class="task-row-meta">
+                <span class="badge badge-{{ t.risk_level }}">{{ t.risk_level }}</span>
+                <span class="td-mono">{{ t.id[:8] if t.id else '' }}</span>
+              </div>
+            </div>
+            {% if user.role == 'operator' %}
+            <div class="task-row-actions">
+              <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+              <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+            </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function approveTask(id) {
+    await fetch(`/api/tasks/${id}/approve`, {method:'POST'});
+    location.reload();
+  }
+  async function declineTask(id) {
+    await fetch(`/api/tasks/${id}/decline`, {method:'POST'});
+    location.reload();
+  }
+</script>
+{% endblock %}

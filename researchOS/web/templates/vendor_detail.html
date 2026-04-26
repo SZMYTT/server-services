@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile.vendor_name or profile.vendor_url }} — ResearchOS{% endblock %}
+{% block header_breadcrumb %}
+  <a href="/vendors" style="color:var(--c-text-muted); text-decoration:none;">Vendors</a>
+  <span style="margin:0 6px; opacity:0.4;">/</span>
+  <span>{{ profile.vendor_name or profile.vendor_url }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:24px;">
+  <div class="breadcrumb"><a href="/vendors" style="color:var(--c-accent); text-decoration:none;">← Vendor Intelligence</a></div>
+  <h1 class="page-title">{{ profile.vendor_name or profile.vendor_url }}</h1>
+  <p class="page-subtitle">
+    <a href="{{ profile.vendor_url }}" target="_blank" style="color:var(--c-text-muted);">{{ profile.vendor_url }}</a>
+    {% if profile.category %}&nbsp;&middot;&nbsp;{{ profile.category }}{% endif %}
+    {% if profile.scraped_at %}&nbsp;&middot;&nbsp;scraped {{ profile.scraped_at.strftime('%d %b %Y') }}{% endif %}
+  </p>
+</div>
+
+<!-- Quick facts bar -->
+<div class="stat-row" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-label">Type</div>
+    <div class="stat-number" style="font-size:15px;">{{ profile.company_type or '—' }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">UK Based</div>
+    <div class="stat-number" style="font-size:15px;">
+      {% if profile.uk_based == true %}✅ Yes
+      {% elif profile.uk_based == false %}❌ No
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Min Order</div>
+    <div class="stat-number" style="font-size:14px;">{{ profile.min_order_value or profile.min_order_qty or '—' }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Lead Time</div>
+    <div class="stat-number" style="font-size:14px;">{{ profile.lead_time or '—' }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Wholesale</div>
+    <div class="stat-number" style="font-size:15px;">
+      {% if profile.wholesale_available == true %}✅ Yes
+      {% elif profile.wholesale_available == false %}❌ No
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  {% if profile.confidence_score %}
+  <div class="stat-card">
+    <div class="stat-label">Confidence</div>
+    <div class="stat-number" style="font-size:15px;">{{ profile.confidence_score }}/10</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Risk flags -->
+{% if profile.risk_flags and profile.risk_flags | length > 0 %}
+<div style="background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:12px 16px; margin-bottom:20px;">
+  <div style="font-weight:600; font-size:13px; color:#dc2626; margin-bottom:6px;">⚠️ Risk Flags</div>
+  {% for flag in profile.risk_flags %}
+  <div style="font-size:13px; color:#b91c1c; margin-bottom:2px;">{{ flag }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Main report -->
+{% if profile.raw_report_html %}
+<div class="card" style="margin-bottom:24px;">
+  <div class="report-body">
+    {{ profile.raw_report_html | safe }}
+  </div>
+</div>
+{% endif %}
+
+<!-- Products table (structured) -->
+{% if profile.products and profile.products | length > 0 %}
+<div class="card" style="margin-bottom:24px;">
+  <h2 style="font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:0.7px; color:var(--c-text-muted); margin-bottom:14px;">Products Found</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead>
+      <tr style="border-bottom:2px solid var(--c-border); text-align:left;">
+        <th style="padding:6px 10px; color:var(--c-text-muted); font-size:11.5px; text-transform:uppercase;">NNL SKU</th>
+        <th style="padding:6px 10px; color:var(--c-text-muted); font-size:11.5px; text-transform:uppercase;">Product</th>
+        <th style="padding:6px 10px; color:var(--c-text-muted); font-size:11.5px; text-transform:uppercase;">Price</th>
+        <th style="padding:6px 10px; color:var(--c-text-muted); font-size:11.5px; text-transform:uppercase;">Price Tiers</th>
+        <th style="padding:6px 10px; color:var(--c-text-muted); font-size:11.5px; text-transform:uppercase;">Stock</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for prod in profile.products %}
+      <tr style="border-bottom:1px solid var(--c-border);">
+        <td style="padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--c-text-muted);">{{ prod.sku or '—' }}</td>
+        <td style="padding:8px 10px;">
+          {% if prod.url %}<a href="{{ prod.url }}" target="_blank" style="color:var(--c-accent);">{{ prod.name }}</a>
+          {% else %}{{ prod.name }}{% endif %}
+          {% if prod.site_ref %}<div style="font-size:11px; color:var(--c-text-muted);">Supplier ref: {{ prod.site_ref }}</div>{% endif %}
+          {% if prod.description %}<div style="font-size:11.5px; color:var(--c-text-muted); margin-top:2px;">{{ prod.description }}</div>{% endif %}
+        </td>
+        <td style="padding:8px 10px;">{{ prod.price or '—' }}</td>
+        <td style="padding:8px 10px; font-size:12px; color:var(--c-text-muted);">
+          {% if prod.price_tiers %}
+            {% for tier in prod.price_tiers %}{{ tier.qty }} @ {{ tier.price }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+          {% else %}—{% endif %}
+        </td>
+        <td style="padding:8px 10px;">
+          {% if prod.in_stock == true %}✅
+          {% elif prod.in_stock == false %}❌
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Intelligence: alternatives + upstream -->
+{% if profile.alternatives and profile.alternatives | length > 0 %}
+<div class="card" style="margin-bottom:24px;">
+  <h2 style="font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:0.7px; color:var(--c-text-muted); margin-bottom:14px;">Comparable Alternatives</h2>
+  {% for alt in profile.alternatives %}
+  <div style="padding:8px 0; border-bottom:1px solid var(--c-border);">
+    <strong>{{ alt.name }}</strong>
+    {% if alt.url %} — <a href="{{ alt.url }}" target="_blank" style="color:var(--c-accent); font-size:12px;">{{ alt.url }}</a>{% endif %}
+    {% if alt.notes %}<div style="font-size:12.5px; color:var(--c-text-muted); margin-top:2px;">{{ alt.notes }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Pages scraped -->
+{% if profile.pages_scraped and profile.pages_scraped | length > 0 %}
+<details style="margin-bottom:20px;">
+  <summary style="font-size:12px; color:var(--c-text-muted); cursor:pointer;">{{ profile.pages_scraped | length }} pages scraped</summary>
+  <div style="margin-top:8px; font-size:12px; font-family:'JetBrains Mono',monospace;">
+    {% for p in profile.pages_scraped %}
+    <div><a href="{{ p.url }}" target="_blank" style="color:var(--c-accent);">{{ p.url }}</a> <span style="color:var(--c-text-muted);">({{ p.label }})</span></div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+<!-- Delete -->
+<form method="POST" action="/vendor/{{ profile.id }}/delete" onsubmit="return confirm('Delete this vendor profile?');">
+  <button type="submit" class="btn btn-secondary" style="font-size:12px; opacity:0.6;">Delete profile</button>
+</form>
+
+{% endblock %}

@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Vehicle Inventory — Cars — PrismaOS{% endblock %}
+{% block page_title %}Vehicle Inventory{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Cars · Fleet tracking & P&amp;L per vehicle</p>{% endblock %}
+
+{% block content %}
+
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Vehicles</span>
+    <div class="stat-number">{{ stats.total }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">In Stock</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ (stats.sourced|int) + (stats.listed|int) }}</div>
+    <div class="stat-trend">Sourced + listed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Sold</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ stats.sold }}</div>
+    <div class="stat-trend">Completed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total Profit</span>
+    <div class="stat-number" style="color:{% if stats.total_profit|float >= 0 %}var(--c-success){% else %}var(--c-error){% endif %}">
+      £{{ "{:,.0f}".format(stats.total_profit|float) }}
+    </div>
+    <div class="stat-trend">Realised on sold vehicles</div>
+  </div>
+</div>
+
+<!-- Pipeline Funnel Chart -->
+<div class="card mb-32" style="padding:24px;">
+  <h2 class="card-title mb-16">Pipeline</h2>
+  <div style="position:relative; height:160px;">
+    <canvas id="funnelChart"></canvas>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Fleet</h2>
+  <button class="btn btn-secondary" onclick="openModal('addVehicleModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add Vehicle
+  </button>
+</div>
+
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterStatus('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('sourced')">Sourced</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('prepping')">Prepping</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('listed')">Listed</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('sold')">Sold</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if vehicles %}
+  <table class="data-table" id="vehicles-table">
+    <thead>
+      <tr>
+        <th>Vehicle</th>
+        <th>Buy Cost</th>
+        <th>Sell Price</th>
+        <th>Profit</th>
+        <th>Status</th>
+        <th>Purchased</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in vehicles %}
+      <tr data-status="{{ v.status }}">
+        <td>
+          <div class="td-primary">{{ v.year or '' }} {{ v.make }} {{ v.model }}</div>
+          <div style="font-size:12px; color:var(--c-text-muted); margin-top:2px;">
+            {% if v.colour %}{{ v.colour }} · {% endif %}
+            {% if v.mileage %}{{ "{:,}".format(v.mileage) }} mi{% endif %}
+            {% if v.vin %} · <span class="td-mono">{{ v.vin }}</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          <div class="td-primary">£{{ "{:,.0f}".format(v.buy_price|float) }}</div>
+          {% if v.repair_costs|float > 0 %}<div style="font-size:11px; color:var(--c-text-muted);">+£{{ "{:,.0f}".format(v.repair_costs|float) }} repairs</div>{% endif %}
+          <div style="font-size:11px; color:var(--c-text-muted);">Total: £{{ "{:,.0f}".format(v.total_cost) }}</div>
+        </td>
+        <td class="td-primary">
+          {% if v.sell_price %}£{{ "{:,.0f}".format(v.sell_price|float) }}{% else %}<span style="color:var(--c-text-muted);">—</span>{% endif %}
+        </td>
+        <td>
+          {% if v.profit is not none %}
+            <span style="font-weight:600; color:{% if v.profit >= 0 %}var(--c-success){% else %}var(--c-error){% endif %};">
+              {% if v.profit >= 0 %}+{% endif %}£{{ "{:,.0f}".format(v.profit) }}
+            </span>
+          {% else %}
+            <span style="color:var(--c-text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:110px;" onchange="updateVehicle('{{ v.id }}', this.value)">
+            {% for s in ['sourced','prepping','listed','sold'] %}
+            <option value="{{ s }}" {% if s == v.status %}selected{% endif %}>{{ s | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="td-mono">{{ v.purchased_at.strftime('%d %b %Y') if v.purchased_at else '—' }}</td>
+        <td>
+          <button class="btn btn-xs btn-ghost" onclick="openSellModal('{{ v.id }}', '{{ v.make }} {{ v.model }}')">
+            {% if v.status == 'sold' %}Edit{% else %}Mark Sold{% endif %}
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+    <h3>No vehicles</h3>
+    <p>Add your first vehicle to start tracking P&L.</p>
+    <button class="btn btn-secondary" onclick="openModal('addVehicleModal')">Add Vehicle</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Vehicle Modal -->
+<div class="modal-backdrop" id="addVehicleModal" style="display:none;" onclick="closeModal('addVehicleModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Vehicle</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Make *</label>
+            <input class="form-input" id="v-make" placeholder="BMW" />
+          </div>
+          <div>
+            <label class="form-label">Model *</label>
+            <input class="form-input" id="v-model" placeholder="3 Series" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Year</label>
+            <input class="form-input" id="v-year" type="number" placeholder="2020" />
+          </div>
+          <div>
+            <label class="form-label">Colour</label>
+            <input class="form-input" id="v-colour" placeholder="Black" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Mileage</label>
+            <input class="form-input" id="v-mileage" type="number" placeholder="45000" />
+          </div>
+          <div>
+            <label class="form-label">VIN</label>
+            <input class="form-input" id="v-vin" placeholder="WBA..." />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Buy Price (£) *</label>
+            <input class="form-input" id="v-buy" type="number" placeholder="8000" />
+          </div>
+          <div>
+            <label class="form-label">Repair Costs (£)</label>
+            <input class="form-input" id="v-repair" type="number" placeholder="0" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Source</label>
+            <select class="form-input form-select" id="v-source">
+              <option value="bca">BCA</option>
+              <option value="manheim">Manheim</option>
+              <option value="facebook">Facebook</option>
+              <option value="autotrader">Autotrader</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Purchase Date</label>
+            <input class="form-input" id="v-date" type="date" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="v-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addVehicleModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitVehicle()">Add Vehicle</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sell / Update Modal -->
+<div class="modal-backdrop" id="sellModal" style="display:none;" onclick="closeModal('sellModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3 id="sellTitle">Mark as Sold</h3></div>
+    <div class="modal-body">
+      <input type="hidden" id="sell-id" />
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Sale Price (£)</label>
+          <input class="form-input" id="sell-price" type="number" placeholder="0" />
+        </div>
+        <div>
+          <label class="form-label">Additional Repair Costs (£)</label>
+          <input class="form-input" id="sell-repair" type="number" placeholder="0" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('sellModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitSell()">Confirm Sale</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function openSellModal(id, name) {
+    document.getElementById('sell-id').value = id;
+    document.getElementById('sellTitle').textContent = `Sell: ${name}`;
+    document.getElementById('sellModal').style.display = 'flex';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStatus(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#vehicles-table tbody tr').forEach(row => {
+      row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+  }
+  async function updateVehicle(id, status) {
+    const r = await fetch(`/api/erp/cars/vehicles/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitVehicle() {
+    const p = {
+      make: document.getElementById('v-make').value,
+      model: document.getElementById('v-model').value,
+      year: parseInt(document.getElementById('v-year').value) || null,
+      colour: document.getElementById('v-colour').value,
+      mileage: parseInt(document.getElementById('v-mileage').value) || null,
+      vin: document.getElementById('v-vin').value,
+      buy_price: parseFloat(document.getElementById('v-buy').value) || 0,
+      repair_costs: parseFloat(document.getElementById('v-repair').value) || 0,
+      source: document.getElementById('v-source').value,
+      purchased_at: document.getElementById('v-date').value || null,
+      notes: document.getElementById('v-notes').value,
+    };
+    if (!p.make || !p.model) { toast('Make and model required', 'error'); return; }
+    const r = await fetch('/api/erp/cars/vehicles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Vehicle added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+  async function submitSell() {
+    const id = document.getElementById('sell-id').value;
+    const sell_price = parseFloat(document.getElementById('sell-price').value) || null;
+    const repair_costs = parseFloat(document.getElementById('sell-repair').value) || null;
+    const params = new URLSearchParams({status: 'sold'});
+    if (sell_price) params.set('sell_price', sell_price);
+    if (repair_costs) params.set('repair_costs', repair_costs);
+    const r = await fetch(`/api/erp/cars/vehicles/${id}?${params}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) { toast('Sold!'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+
+  // ── Pipeline Funnel Chart ─────────────────────────────────────
+  (() => {
+    const stats = {
+      sourced:  {{ stats.sourced  | default(0) | int }},
+      prepping: {{ stats.prepping | default(0) | int }},
+      listed:   {{ stats.listed   | default(0) | int }},
+      sold:     {{ stats.sold     | default(0) | int }},
+    };
+    const ctx = document.getElementById('funnelChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sourced', 'Prepping', 'Listed', 'Sold'],
+        datasets: [{
+          label: 'Vehicles',
+          data: [stats.sourced, stats.prepping, stats.listed, stats.sold],
+          backgroundColor: [
+            'rgba(191,168,128,0.55)',
+            'rgba(42,91,107,0.55)',
+            'rgba(78,130,90,0.55)',
+            'rgba(58,107,74,0.85)',
+          ],
+          borderColor: [
+            'rgba(191,168,128,1)',
+            'rgba(42,91,107,1)',
+            'rgba(78,130,90,1)',
+            'rgba(58,107,74,1)',
+          ],
+          borderWidth: 1,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} vehicle${ctx.parsed.x !== 1 ? 's' : ''}` } },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 }, stepSize: 1 },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+          },
+          y: { ticks: { color: '#C8BCA8', font: { family: 'DM Sans', size: 12 } }, grid: { display: false } },
+        },
+      },
+    });
+  })();
+</script>
+{% endblock %}

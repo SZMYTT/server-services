@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Approvals — PrismaOS{% endblock %}
+{% block page_title %}Approvals Inbox{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Tasks requiring operator sign-off, sorted by risk level. Financial first.</p>{% endblock %}
+
+{% block content %}
+
+{% set financial = tasks | selectattr("risk_level", "equalto", "financial") | list %}
+{% set public = tasks | selectattr("risk_level", "equalto", "public") | list %}
+{% set internal = tasks | selectattr("risk_level", "equalto", "internal") | list %}
+
+{% if not tasks %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <h3>Inbox clear</h3>
+    <p>No tasks are waiting for approval right now.</p>
+  </div>
+</div>
+{% else %}
+
+<!-- Financial risk (highest priority) -->
+{% if financial %}
+<div class="mb-40">
+  <div class="flex items-center gap-12 mb-16">
+    <h2 class="card-title">Financial Risk</h2>
+    <span class="badge badge-financial">{{ financial | length }} pending</span>
+    <span style="font-size:13px; color:var(--c-text-muted); margin-left:auto;">Act immediately — financial implications</span>
+  </div>
+  <div class="card" style="padding:0; overflow:hidden; border-left:3px solid var(--c-status-fin);">
+    {% for t in financial %}
+    <div class="task-row risk-financial">
+      <div class="task-row-content">
+        <div class="task-row-title">{{ t.input[:100] if t.input else t.task_type | replace('_',' ') | title }}</div>
+        <div class="task-row-meta">
+          <span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span>
+          <span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span>
+          <span class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '' }}</span>
+        </div>
+      </div>
+      <div class="task-row-actions">
+        <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+        <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Public risk -->
+{% if public %}
+<div class="mb-40">
+  <div class="flex items-center gap-12 mb-16">
+    <h2 class="card-title">Public Risk</h2>
+    <span class="badge badge-public">{{ public | length }} pending</span>
+    <span style="font-size:13px; color:var(--c-text-muted); margin-left:auto;">Will be published or sent externally</span>
+  </div>
+  <div class="card" style="padding:0; overflow:hidden; border-left:3px solid var(--c-status-public);">
+    {% for t in public %}
+    <div class="task-row risk-public">
+      <div class="task-row-content">
+        <div class="task-row-title">{{ t.input[:100] if t.input else t.task_type | replace('_',' ') | title }}</div>
+        <div class="task-row-meta">
+          <span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span>
+          <span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span>
+          <span class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '' }}</span>
+        </div>
+      </div>
+      <div class="task-row-actions">
+        <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+        <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Internal -->
+{% if internal %}
+<div>
+  <div class="flex items-center gap-12 mb-16">
+    <h2 class="card-title">Internal</h2>
+    <span class="badge badge-internal">{{ internal | length }} pending</span>
+  </div>
+  <div class="card" style="padding:0; overflow:hidden; border-left:3px solid var(--c-status-internal);">
+    {% for t in internal %}
+    <div class="task-row risk-internal">
+      <div class="task-row-content">
+        <div class="task-row-title">{{ t.input[:100] if t.input else t.task_type | replace('_',' ') | title }}</div>
+        <div class="task-row-meta">
+          <span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span>
+          <span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span>
+          <span class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '' }}</span>
+        </div>
+      </div>
+      <div class="task-row-actions">
+        <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+        <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function approveTask(id) {
+    await fetch(`/api/tasks/${id}/approve`, {method:'POST'});
+    location.reload();
+  }
+  async function declineTask(id) {
+    await fetch(`/api/tasks/${id}/decline`, {method:'POST'});
+    location.reload();
+  }
+</script>
+{% endblock %}

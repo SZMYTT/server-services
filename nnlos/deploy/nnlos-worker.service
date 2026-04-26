@@ -1,0 +1,17 @@
+[Unit]
+Description=NNLOS Background Worker (sync + analytics)
+After=network.target systemos-postgres.service
+
+[Service]
+Type=simple
+User=szmyt
+WorkingDirectory=/home/szmyt/server-services/nnlos
+EnvironmentFile=/home/szmyt/server-services/nnlos/.env
+ExecStart=/home/szmyt/server-services/nnlos/.venv/bin/python -m services.worker
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

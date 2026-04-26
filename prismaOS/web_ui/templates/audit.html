@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — PrismaOS{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Operator · All system actions, logins, and mutations</p>{% endblock %}
+
+{% block content %}
+
+<!-- Summary stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Events</span>
+    <div class="stat-number">{{ entries | length }}</div>
+    <div class="stat-trend">Last 500</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Logins Today</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ entries | selectattr('action','eq','LOGIN') | list | length }}</div>
+    <div class="stat-trend">Successful</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Failed Logins</span>
+    <div class="stat-number" style="color:{% if entries | selectattr('action','eq','LOGIN_FAILED') | list | length > 0 %}var(--c-error){% else %}var(--c-text-secondary){% endif %}">
+      {{ entries | selectattr('action','eq','LOGIN_FAILED') | list | length }}
+    </div>
+    <div class="stat-trend">Rejected attempts</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Mutations</span>
+    <div class="stat-number">{{ entries | selectattr('action','in',['CREATE','UPDATE','DELETE']) | list | length }}</div>
+    <div class="stat-trend">CREATE / UPDATE / DELETE</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="flex gap-8 mb-16 flex-wrap" id="action-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterAction('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('LOGIN')" style="color:var(--c-success);">Login</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('LOGIN_FAILED')" style="color:var(--c-error);">Failed</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('CREATE')">Create</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('UPDATE')">Update</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('DELETE')" style="color:var(--c-error);">Delete</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterAction('LOGOUT')">Logout</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if entries %}
+  <table class="data-table" id="audit-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>User</th>
+        <th>Action</th>
+        <th>Resource</th>
+        <th>Workspace</th>
+        <th>ID</th>
+        <th>IP</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr data-action="{{ e.action }}">
+        <td class="td-mono" style="font-size:12px; white-space:nowrap;">
+          {{ e.created_at.strftime('%d %b %H:%M:%S') if e.created_at else '—' }}
+        </td>
+        <td>
+          <span style="font-weight:600; font-size:13px;">{{ e.username }}</span>
+        </td>
+        <td>
+          {% if e.action == 'LOGIN' %}
+            <span class="badge" style="background:rgba(58,107,74,.15); color:var(--c-success);">LOGIN</span>
+          {% elif e.action == 'LOGIN_FAILED' %}
+            <span class="badge" style="background:rgba(139,58,42,.15); color:var(--c-error);">FAILED</span>
+          {% elif e.action == 'LOGOUT' %}
+            <span class="badge" style="background:var(--c-card-border); color:var(--c-text-muted);">LOGOUT</span>
+          {% elif e.action == 'CREATE' %}
+            <span class="badge" style="background:rgba(42,91,107,.15); color:var(--c-info);">CREATE</span>
+          {% elif e.action == 'UPDATE' %}
+            <span class="badge" style="background:rgba(191,168,128,.18); color:var(--c-gold-dark);">UPDATE</span>
+          {% elif e.action == 'DELETE' %}
+            <span class="badge" style="background:rgba(139,58,42,.15); color:var(--c-error);">DELETE</span>
+          {% else %}
+            <span class="badge">{{ e.action }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size:13px; color:var(--c-text-secondary);">
+          {{ e.resource | replace('_',' ') }}
+          {% if e.details %}
+            <span style="font-size:11px; color:var(--c-text-muted); margin-left:4px;">
+              — {% for k,v in e.details.items() %}{{ k }}:{{ v }} {% endfor %}
+            </span>
+          {% endif %}
+        </td>
+        <td>
+          {% if e.workspace %}
+            <span class="ws-pill" style="font-size:11px;">{{ e.workspace | replace('_',' ') | title }}</span>
+          {% else %}
+            <span style="color:var(--c-text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td class="td-mono" style="font-size:11px; color:var(--c-text-muted);">
+          {{ e.resource_id[:8] if e.resource_id else '—' }}
+        </td>
+        <td class="td-mono" style="font-size:11px; color:var(--c-text-muted);">
+          {{ e.ip_address or '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+    <h3>No audit events yet</h3>
+    <p>Login, logout, and ERP mutations will appear here.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function filterAction(action) {
+    document.querySelectorAll('#action-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#audit-table tbody tr').forEach(row => {
+      row.style.display = (action === 'all' || row.dataset.action === action) ? '' : 'none';
+    });
+  }
+</script>
+{% endblock %}

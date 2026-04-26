@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}New Task — {{ ws_meta[active_ws].name }} — PrismaOS{% endblock %}
+{% block page_title %}New Task{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Submit an AI task for {{ ws_meta[active_ws].name }}. It will be queued and routed to the appropriate agent.</p>{% endblock %}
+
+{% block content %}
+
+<div style="max-width:640px;">
+  <div id="alert-container" style="display:none; margin-bottom:24px;"></div>
+
+  <form id="task-form" onsubmit="submitTask(event)">
+    <div class="card" style="margin-bottom:24px;">
+      <h2 class="card-title mb-24">Task Details</h2>
+
+      <div class="grid-2" style="margin-bottom:20px;">
+        <div>
+          <label class="form-label">Task Type</label>
+          <select name="task_type" class="form-input form-select" required>
+            <option value="content_idea">Idea Generation</option>
+            <option value="content_draft">Draft Content</option>
+            <option value="system_research">Research</option>
+            <option value="document_review">Review Document</option>
+            <option value="data_extraction">Extract Data</option>
+            <option value="custom_task">Custom Instruction</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Module Target</label>
+          <select name="module" class="form-input form-select">
+            <option value="">Default Agent</option>
+            <option value="content_social">Social Content</option>
+            <option value="auction_scan">Auction Scanning</option>
+            <option value="legal_review">Legal Review</option>
+            <option value="finance_report">Finance Report</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label class="form-label">Task Prompt</label>
+        <textarea name="input_text" class="form-input form-textarea"
+                  placeholder="Describe exactly what you need the AI to do. Be specific — mention products, tone, format, or any constraints."
+                  rows="6" required></textarea>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:10px;">
+        <input type="checkbox" name="urgent" id="urgent" style="width:16px; height:16px; accent-color:var(--c-gold); cursor:pointer;">
+        <label for="urgent" style="font-size:14px; color:var(--c-text-secondary); cursor:pointer;">Mark as urgent (bypasses queue delay)</label>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:12px;">
+      <a href="/{{ active_ws }}/overview" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">
+        Submit to Queue
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+        </svg>
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitTask(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type="submit"]');
+  const alertEl = document.getElementById('alert-container');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const fd = new FormData(e.target);
+    const res = await fetch('/api/tasks/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_type: fd.get('task_type'),
+        module: fd.get('module') || fd.get('task_type'),
+        input: fd.get('input_text'),
+        workspace: '{{ active_ws }}',
+        user_name: '{{ user.username }}',
+        urgent: fd.get('urgent') === 'on'
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alertEl.style.display = 'block';
+      alertEl.className = 'alert alert-success';
+      alertEl.innerHTML = '✓ Task queued successfully. Redirecting…';
+      setTimeout(() => window.location.href = '/{{ active_ws }}/overview', 1500);
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch(err) {
+    alertEl.style.display = 'block';
+    alertEl.className = 'alert alert-error';
+    alertEl.innerHTML = '✗ ' + err.message;
+    btn.disabled = false;
+    btn.textContent = 'Submit to Queue';
+  }
+}
+</script>
+{% endblock %}

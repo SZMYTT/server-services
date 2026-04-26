@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Inventory — Candles — PrismaOS{% endblock %}
+{% block page_title %}Inventory{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Candles · Raw materials & finished goods</p>{% endblock %}
+
+{% block content %}
+
+{% if low_stock %}
+<div class="alert alert-warning mb-24">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div><strong>{{ low_stock | length }} item{{ 's' if low_stock|length > 1 }} below reorder level:</strong>
+    {{ low_stock | map(attribute='name') | join(', ') }}</div>
+</div>
+{% endif %}
+
+<!-- Stats -->
+<div class="grid-3 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Raw Materials</span>
+    <div class="stat-number">{{ raw_materials | length }}</div>
+    <div class="stat-trend">Tracked ingredients</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Finished Goods</span>
+    <div class="stat-number">{{ finished_goods | length }}</div>
+    <div class="stat-trend">Products in stock</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Low Stock</span>
+    <div class="stat-number" style="{% if low_stock %}color:var(--c-warning){% endif %}">{{ low_stock | length }}</div>
+    <div class="stat-trend">Need reordering</div>
+  </div>
+</div>
+
+<!-- Raw Materials -->
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Raw Materials</h2>
+  <button class="btn btn-sm btn-secondary" onclick="openModal('addItemModal', 'raw')">+ Add Material</button>
+</div>
+<div class="card mb-40" style="padding:0; overflow:hidden;">
+  {% if raw_materials %}
+  <table class="data-table">
+    <thead><tr><th>Item</th><th>Quantity</th><th>Reorder At</th><th>Cost/Unit</th><th>Supplier</th><th></th></tr></thead>
+    <tbody>
+      {% for item in raw_materials %}
+      <tr>
+        <td>
+          <div class="td-primary">{{ item.name }}</div>
+          {% if item.notes %}<div style="font-size:12px; color:var(--c-text-muted);">{{ item.notes }}</div>{% endif %}
+        </td>
+        <td>
+          <span class="td-primary" id="qty-{{ item.id }}">{{ item.quantity }}</span>
+          <span style="font-size:12px; color:var(--c-text-muted);"> {{ item.unit }}</span>
+          {% if item.quantity|float <= item.reorder_level|float and item.reorder_level|float > 0 %}
+          <span class="badge badge-financial" style="margin-left:4px;">Low</span>{% endif %}
+        </td>
+        <td class="td-mono">{{ item.reorder_level }} {{ item.unit }}</td>
+        <td class="td-mono">{% if item.cost_per_unit %}£{{ "%.4f"|format(item.cost_per_unit|float) }}{% else %}—{% endif %}</td>
+        <td>{{ item.supplier or '—' }}</td>
+        <td>
+          <button class="btn btn-xs btn-ghost" onclick="openAdjust('{{ item.id }}', '{{ item.name }}', {{ item.quantity }})">Adjust</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state" style="padding:32px;">
+    <h3>No raw materials</h3>
+    <p>Track wax, wicks, fragrance oils and packaging.</p>
+    <button class="btn btn-secondary" onclick="openModal('addItemModal', 'raw')">Add Material</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Finished Goods -->
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Finished Goods</h2>
+  <button class="btn btn-sm btn-secondary" onclick="openModal('addItemModal', 'finished')">+ Add Product</button>
+</div>
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if finished_goods %}
+  <table class="data-table">
+    <thead><tr><th>Product</th><th>In Stock</th><th>Reorder At</th><th>Cost/Unit</th><th></th></tr></thead>
+    <tbody>
+      {% for item in finished_goods %}
+      <tr>
+        <td>
+          <div class="td-primary">{{ item.name }}</div>
+          {% if item.sku %}<div class="td-mono">{{ item.sku }}</div>{% endif %}
+        </td>
+        <td>
+          <span class="td-primary">{{ item.quantity }}</span>
+          {% if item.quantity|float <= item.reorder_level|float and item.reorder_level|float > 0 %}
+          <span class="badge badge-financial" style="margin-left:4px;">Low</span>{% endif %}
+        </td>
+        <td class="td-mono">{{ item.reorder_level }} units</td>
+        <td class="td-mono">{% if item.cost_per_unit %}£{{ "%.2f"|format(item.cost_per_unit|float) }}{% else %}—{% endif %}</td>
+        <td>
+          <button class="btn btn-xs btn-ghost" onclick="openAdjust('{{ item.id }}', '{{ item.name }}', {{ item.quantity }})">Adjust</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state" style="padding:32px;">
+    <h3>No finished goods</h3>
+    <p>Track your completed candle products ready for sale.</p>
+    <button class="btn btn-secondary" onclick="openModal('addItemModal', 'finished')">Add Product</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Item Modal -->
+<div class="modal-backdrop" id="addItemModal" style="display:none;" onclick="closeModal('addItemModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3 id="addItemTitle">Add Material</h3></div>
+    <div class="modal-body">
+      <input type="hidden" id="item-category" value="raw" />
+      <div style="display:grid; gap:16px;">
+        <div>
+          <label class="form-label">Name *</label>
+          <input class="form-input" id="item-name" placeholder="e.g. Soy Wax 464" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Quantity</label>
+            <input class="form-input" id="item-qty" type="number" step="0.001" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Unit</label>
+            <input class="form-input" id="item-unit" placeholder="kg, units, ml..." />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Reorder Level</label>
+            <input class="form-input" id="item-reorder" type="number" step="0.001" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Cost per Unit (£)</label>
+            <input class="form-input" id="item-cost" type="number" step="0.0001" placeholder="0.00" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Supplier</label>
+          <input class="form-input" id="item-supplier" placeholder="Supplier name" />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="item-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addItemModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitItem()">Add Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- Adjust Stock Modal -->
+<div class="modal-backdrop" id="adjustModal" style="display:none;" onclick="closeModal('adjustModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3 id="adjustTitle">Adjust Stock</h3></div>
+    <div class="modal-body">
+      <input type="hidden" id="adjust-id" />
+      <label class="form-label">New Quantity</label>
+      <input class="form-input" id="adjust-qty" type="number" step="0.001" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('adjustModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitAdjust()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openModal(id, cat) {
+    if (cat) {
+      document.getElementById('item-category').value = cat;
+      document.getElementById('addItemTitle').textContent = cat === 'raw' ? 'Add Raw Material' : 'Add Finished Product';
+    }
+    document.getElementById(id).style.display = 'flex';
+  }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function openAdjust(id, name, qty) {
+    document.getElementById('adjust-id').value = id;
+    document.getElementById('adjustTitle').textContent = `Adjust: ${name}`;
+    document.getElementById('adjust-qty').value = qty;
+    document.getElementById('adjustModal').style.display = 'flex';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  async function submitItem() {
+    const p = {
+      name: document.getElementById('item-name').value,
+      category: document.getElementById('item-category').value,
+      quantity: parseFloat(document.getElementById('item-qty').value) || 0,
+      unit: document.getElementById('item-unit').value || 'units',
+      reorder_level: parseFloat(document.getElementById('item-reorder').value) || 0,
+      cost_per_unit: parseFloat(document.getElementById('item-cost').value) || 0,
+      supplier: document.getElementById('item-supplier').value,
+      notes: document.getElementById('item-notes').value,
+    };
+    if (!p.name) { toast('Name required', 'error'); return; }
+    const r = await fetch('/api/erp/candles/inventory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Item added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+  async function submitAdjust() {
+    const id = document.getElementById('adjust-id').value;
+    const qty = parseFloat(document.getElementById('adjust-qty').value);
+    const r = await fetch(`/api/erp/candles/inventory/${id}?quantity=${qty}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) { toast('Stock updated'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

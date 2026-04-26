@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Ideas Board — Food Brand — PrismaOS{% endblock %}
+{% block page_title %}Ideas Board{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Food Brand · Recipe ideas, trends &amp; content concepts</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+{% set by_status = {} %}
+{% for idea in ideas %}
+  {% set _ = by_status.update({idea.status: (by_status.get(idea.status, 0) + 1)}) %}
+{% endfor %}
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Ideas</span>
+    <div class="stat-number">{{ ideas | length }}</div>
+    <div class="stat-trend">Active ideas</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Planned</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ ideas | selectattr('status','eq','planned') | list | length }}</div>
+    <div class="stat-trend">Scheduled for production</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">In Progress</span>
+    <div class="stat-number" style="color:var(--c-info)">{{ ideas | selectattr('status','eq','in_progress') | list | length }}</div>
+    <div class="stat-trend">Being created</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Published</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ ideas | selectattr('status','eq','published') | list | length }}</div>
+    <div class="stat-trend">Live content</div>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Ideas</h2>
+  <button class="btn btn-secondary" onclick="openModal('addIdeaModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    New Idea
+  </button>
+</div>
+
+<!-- Category filters -->
+<div class="flex gap-8 mb-16" id="cat-filters" style="flex-wrap:wrap;">
+  <button class="btn btn-sm btn-secondary" onclick="filterCat('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterCat('recipe')">Recipes</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterCat('trend')">Trends</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterCat('product')">Products</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterCat('collab')">Collabs</button>
+</div>
+
+<!-- Ideas grid -->
+{% if ideas %}
+<div class="grid-3" id="ideas-grid">
+  {% for idea in ideas %}
+  <div class="card idea-card" data-cat="{{ idea.category or '' }}" style="display:flex; flex-direction:column; gap:12px; border-top:3px solid {{ {'idea':'#BFA880','planned':'#2A5B6B','in_progress':'#9B7A2A','published':'#3A6B4A'}.get(idea.status, '#E2D9C4') }};">
+    <div class="flex items-center justify-between">
+      <span class="badge badge-idea-{{ idea.status }}">{{ idea.status | replace('_',' ') | title }}</span>
+      {% if idea.category %}<span class="badge badge-internal">{{ idea.category | title }}</span>{% endif %}
+    </div>
+    <div>
+      <div class="td-primary" style="font-size:15px; margin-bottom:4px;">{{ idea.title }}</div>
+      {% if idea.description %}<div style="font-size:13px; color:var(--c-text-muted); line-height:1.5;">{{ idea.description[:120] }}{% if idea.description|length > 120 %}…{% endif %}</div>{% endif %}
+    </div>
+    {% if idea.platform %}
+    <div style="font-size:12px; color:var(--c-text-muted);">📱 {{ idea.platform | title }}</div>
+    {% endif %}
+    <div class="flex items-center justify-between" style="margin-top:auto;">
+      <div style="display:flex; gap:4px;">
+        {% for i in range(1, 6) %}
+        <div style="width:8px; height:8px; border-radius:50%; background:{% if i <= idea.priority %}var(--c-gold){% else %}var(--c-card-border){% endif %};"></div>
+        {% endfor %}
+      </div>
+      <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:120px;" onchange="updateIdea('{{ idea.id }}', this.value)">
+        {% for s in ['idea','planned','in_progress','published','archived'] %}
+        <option value="{{ s }}" {% if s == idea.status %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+    <h3>No ideas yet</h3>
+    <p>Capture recipe ideas, trending topics, and collaboration concepts.</p>
+    <button class="btn btn-secondary" onclick="openModal('addIdeaModal')">New Idea</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Add Idea Modal -->
+<div class="modal-backdrop" id="addIdeaModal" style="display:none;" onclick="closeModal('addIdeaModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Idea</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Title *</label>
+          <input class="form-input" id="i-title" placeholder="e.g. Viral 5-ingredient pasta hack" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Category</label>
+            <select class="form-input form-select" id="i-cat">
+              <option value="">— None —</option>
+              <option value="recipe">Recipe</option>
+              <option value="trend">Trend</option>
+              <option value="product">Product</option>
+              <option value="collab">Collab</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Platform</label>
+            <select class="form-input form-select" id="i-platform">
+              <option value="">— Any —</option>
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+              <option value="blog">Blog</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Description</label>
+          <textarea class="form-input form-textarea" id="i-desc" rows="3" placeholder="What's the concept, angle, hook..."></textarea>
+        </div>
+        <div>
+          <label class="form-label">Priority (1–5)</label>
+          <input class="form-input" id="i-priority" type="range" min="1" max="5" value="3" style="padding:0; background:none; border:none; height:auto; margin-top:8px;" oninput="document.getElementById('priority-val').textContent=this.value" />
+          <span id="priority-val" style="font-size:13px; color:var(--c-text-muted);">3</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addIdeaModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitIdea()">Add Idea</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-idea-idea        { background:rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-idea-planned     { background:rgba(42,91,107,.12); color:var(--c-info); }
+  .badge-idea-in_progress { background:rgba(155,122,42,.15); color:var(--c-warning); }
+  .badge-idea-published   { background:rgba(58,107,74,.12); color:var(--c-success); }
+  .badge-idea-archived    { background:var(--c-card-border); color:var(--c-text-muted); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterCat(cat) {
+    document.querySelectorAll('#cat-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('.idea-card').forEach(card => {
+      card.style.display = (cat === 'all' || card.dataset.cat === cat) ? '' : 'none';
+    });
+  }
+  async function updateIdea(id, status) {
+    const r = await fetch(`/api/erp/food/ideas/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitIdea() {
+    const p = {
+      title: document.getElementById('i-title').value,
+      description: document.getElementById('i-desc').value,
+      category: document.getElementById('i-cat').value,
+      platform: document.getElementById('i-platform').value,
+      priority: parseInt(document.getElementById('i-priority').value) || 5,
+    };
+    if (!p.title) { toast('Title required', 'error'); return; }
+    const r = await fetch('/api/erp/food/ideas', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Idea added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

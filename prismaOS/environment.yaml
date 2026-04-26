@@ -1,0 +1,617 @@
+# environment.yaml
+# PrismaOS business manifest.
+# Covers team, workspaces, credentials, approval, and scheduling.
+# Infrastructure config (hardware, models, inference) lives in ../systemOS/environment.yaml.
+# Update whenever your team or workspace setup changes.
+
+meta:
+  system_name: PrismaOS
+  bot_name: Prisma
+  owner: szmyt
+  owner_name: Daniel
+  version: 0.1.0
+  last_updated: 2026-04-19
+  primary_language: en-GB
+  timezone: Europe/London
+
+# ============================================================
+# TEAM
+# ============================================================
+
+team:
+
+  daniel:
+    role: operator
+    username: szmyt
+    language: en
+    access: full
+    businesses:
+      - property
+      - all_workspaces
+
+  eddie:
+    role: workspace_user
+    language: en
+    access: [cars, property]
+    notes: Co-owner of property. Runs cars with his brother.
+
+  eddies_brother:
+    role: workspace_user
+    language: lt
+    access: [cars]
+
+  alice:
+    role: workspace_user
+    language: en
+    access: [candles]
+    notes: Eddie's girlfriend. Runs the Etsy candle shop.
+
+  asta:
+    role: workspace_user
+    language: lt
+    access: [nursing_massage]
+    notes: Eddie's mum. Massage and electric glove treatments.
+
+  alicja:
+    role: workspace_user
+    language: en
+    access: [food_brand]
+    notes: Daniel's sister. Healthy eating brand.
+
+# ============================================================
+# HARDWARE
+# ============================================================
+
+hardware:
+
+  inference_server:
+    name: macbook-pro
+    role: primary_llm_inference
+    os: macOS
+    chip: Apple M1 Max
+    ram_gb: 64
+    storage_gb: 1000
+    status: active
+    always_on: true
+    ollama: true
+    tailscale_hostname: macbook-pro
+    ollama_port: 11434
+    notes: >
+      64GB unified memory supports 70B models comfortably.
+      Runs Ollama only - no other services.
+
+  server:
+    name: lenovo-yoga
+    role: primary_server
+    os: Ubuntu 24.04
+    chip: Intel Core i7
+    ram_gb: 16
+    storage_gb: 512
+    architecture: x86_64
+    status: active
+    always_on: true
+    tailscale_ip: 100.119.217.120
+    tailscale_hostname: lenovo-server
+    local_ip: 192.168.4.20
+    project_path: /home/szmyt/server-services/prismaOS
+    hosts:
+      - orchestrator
+      - vector_memory
+      - mcp_servers
+      - prisma_bot
+      - web_ui
+      - postgres
+      - chromadb
+      - searxng
+      - ntfy
+      - gitea
+      - caddy
+
+  primary_workstation:
+    name: gaming-pc
+    role: development_access_only
+    os: Windows 11
+    chip: AMD Ryzen 3700X
+    ram_gb: 16
+    gpu: NVIDIA RTX 3060 Ti
+    storage_ssd_gb: 1000
+    storage_hdd_gb: 8000
+    status: active
+    ollama: false  # NOT used for inference — development workstation only
+    uses:
+      - vs_code_development
+      - remote_ssh_to_lenovo
+      - web_ui_access
+
+  spare_laptop:
+    name: asus-proart-pz13
+    role: spare
+    os: Windows 11
+    chip: Snapdragon X Plus
+    architecture: ARM
+    ram_gb: 16
+    storage_gb: 1000
+    status: spare
+
+  mobile:
+    name: pixel-9
+    role: mobile_client
+    os: Android
+    status: active
+    uses:
+      - discord_commands
+      - ntfy_notifications
+      - tailscale_access
+      - photo_pipeline_source
+
+# ============================================================
+# NETWORK
+# ============================================================
+
+network:
+  vpn: tailscale
+  lenovo_tailscale_ip: 100.119.217.120
+  lenovo_local_ip: 192.168.4.20
+  status: lenovo_enrolled
+  devices_to_enroll:
+    - macbook-pro
+    - gaming-pc
+    - pixel-9
+
+# ============================================================
+# INFERENCE
+# ============================================================
+
+inference:
+  primary:
+    host: macbook-pro
+    engine: ollama
+    url: http://macbook-pro:11434
+    max_model_size: 70B
+
+
+# ============================================================
+# MODELS
+# ============================================================
+
+models:
+
+  # ── Core models (always loaded) ──────────────────────────────
+  orchestrator:
+    name: llama3.3:70b
+    host: macbook-pro
+    use: task decomposition, routing, complex reasoning
+
+  researcher:
+    name: llama3.3:70b
+    host: macbook-pro
+    use: web research, synthesis, long context
+
+  coder:
+    name: qwen2.5-coder:32b
+    host: macbook-pro
+    use: code generation, review, refactoring
+
+  content:
+    name: mistral:22b
+    host: macbook-pro
+    use: social copy, ad copy, brand voice
+
+  finance:
+    name: phi4:14b
+    host: macbook-pro
+    use: structured output, document analysis
+
+  fast:
+    name: llama3.2:3b
+    host: macbook-pro
+    use: instant replies, classification, routing, comms
+
+  # ── Extended catalogue (Phase 2.6) ───────────────────────────
+  legal:
+    name: gemma3:27b
+    host: macbook-pro
+    use: legal compliance, complex reasoning, regulated content
+
+  precise:
+    name: qwen2.5:14b
+    host: macbook-pro
+    use: structured data extraction, finance, document analysis
+
+  vision:
+    name: llava:13b
+    host: macbook-pro
+    use: image analysis, receipts, property photos, screenshots
+    status: pull_when_needed
+
+  embed:
+    name: nomic-embed-text
+    host: macbook-pro
+    use: semantic embeddings for future RAG memory
+    status: pull_when_needed
+
+# ============================================================
+# SERVICES
+# ============================================================
+
+services:
+
+  postgres:
+    status: running
+    port: 5433
+    container: systemos-postgres
+
+  chromadb:
+    status: running
+    port: 8001
+    container: systemos-chromadb
+
+  searxng:
+    status: running
+    port: 8080
+    container: systemos-searxng
+
+  ntfy:
+    status: running
+    port: 8002
+    container: systemos-ntfy
+
+  gitea:
+    status: running
+    port: 3001
+    container: systemos-gitea
+    url: http://192.168.4.20:3001
+
+  caddy:
+    status: running
+    ports: [80, 443]
+    container: systemos-caddy
+
+  orchestrator:
+    status: active
+    language: Python
+    framework: asyncio
+    port: 8000
+
+  prisma_bot:
+    status: active
+    language: Python
+    library: discord.py
+
+  web_ui:
+    status: active
+    port: 3000
+
+# ============================================================
+# MCP SERVERS
+# ============================================================
+
+mcp:
+
+  filesystem:
+    status: to_be_configured
+    roots:
+      - /home/szmyt/server-services/prismaOS
+      - /mnt/storage
+
+  web_search:
+    engine: searxng
+    status: running
+    url: http://localhost:8080
+
+  browser:
+    engine: playwright
+    status: to_be_installed
+
+  gmail:
+    status: pending_credentials
+    apply_at: console.cloud.google.com
+    cost: free
+
+  google_drive:
+    status: pending_credentials
+    apply_at: console.cloud.google.com
+    cost: free
+
+  prisma_discord_bot:
+    status: to_be_built
+    library: discord.py
+
+  etsy:
+    status: pending_credentials
+    apply_at: etsy.com/developers
+    cost: free
+
+  facebook_ads:
+    status: pending_credentials
+    apply_at: developers.facebook.com
+    cost: free
+
+  rightmove_scraper:
+    status: built
+    method: playwright
+
+# ============================================================
+# WORKSPACES
+# ============================================================
+
+workspaces:
+
+  candles:
+    name: Candle Shop
+    owner: alice
+    platform: Etsy
+    status: live
+    revenue_share: true
+    products: 2
+    price_range: "GBP10-GBP20"
+    sales_per_month: under_10
+    market: UK only
+    target_customer: gift buyers, women 25-45
+    brand_voice: warm, handcrafted, personal, cosy, British
+    primary_weakness: etsy_seo
+    seasonal_peaks: [christmas, valentines, mothers_day]
+    modules_needed:
+      - research
+      - content
+      - customer_comms
+      - finance
+      - inventory
+      - website
+    credentials_needed:
+      - etsy_api
+      - instagram
+      - facebook_ads
+
+  nursing_massage:
+    name: Nursing and Massage
+    owner: asta
+    platform: Facebook
+    status: live
+    revenue_share: true
+    service: electric_glove_treatments
+    delivery: clients_visit
+    marketing: facebook_and_word_of_mouth
+    brand_voice: professional, caring, trustworthy, medically-informed
+    target_customer: local women 30-60, wellness and relaxation
+    growth_path:
+      current: electric glove treatments
+      next: add massage, Instagram, online booking
+      future: nursing license reinstated, private nursing, aesthetics
+    modules_needed:
+      - content
+      - customer_comms
+      - finance
+      - research
+      - website
+      - booking_system
+    credentials_needed:
+      - facebook_page
+      - instagram
+      - cal_com
+
+  cars:
+    name: Car Repair and Auction
+    owners: [eddie, eddies_brother]
+    platform: Facebook Marketplace
+    status: live
+    revenue_share: true
+    model: mix of basic prep and full repair
+    cars_completed: 5-20
+    brand_voice: honest, straight-talking, knowledgeable, transparent
+    target_customer: private buyers wanting reliable used cars
+    growth_path:
+      current: auction sourcing, repair, Facebook Marketplace
+      next: AutoTrader, eBay Motors, website
+      future: garage, workshop, trade accounts
+    modules_needed:
+      - auction_sourcing
+      - research
+      - finance
+      - inventory
+      - content
+      - document_analyser
+      - website
+    credentials_needed:
+      - bca_trade_account
+      - manheim_trade_account
+      - facebook_marketplace
+      - dvla_api
+      - mot_history_api
+
+  property:
+    name: Property
+    owners: [daniel, eddie]
+    platform: N/A
+    status: research_phase
+    revenue_share: true
+    budget_first_purchase: under_150k_GBP
+    target_area: local to Daniel initially, then anywhere viable
+    property_type: 2-3 bed terrace or semi
+    trade_skills_plan:
+      person_1: [plastering, carpentry]
+      person_2: [tiling, first_fix_plumbing]
+      both: [decorating, flooring, basic_electrics, damp_diagnosis]
+      professionals: [gas, structural, electrical_signoff]
+    modules_needed:
+      - research
+      - finance
+      - document_analyser
+      - legal_compliance
+      - project_tracker
+      - contractor_crm
+    credentials_needed:
+      - rightmove_scraper
+      - zoopla_scraper
+      - land_registry_api
+      - companies_house_api
+
+  food_brand:
+    name: Healthy Eating Brand
+    owner: alicja
+    platform: Instagram and TikTok
+    status: live
+    revenue_share: true
+    content_focus: recipes and nutrition advice
+    followers: under_1k
+    brand_voice: healthy, approachable, aspirational, realistic, warm
+    target_customer: health-conscious women 20-40
+    content_pillars:
+      - recipes
+      - nutrition_education
+      - meal_prep
+      - myth_busting
+      - personal_journey
+    growth_path:
+      current: building audience on Instagram and TikTok
+      next: 10k followers, recipe blog website
+      future: email list, cookbook, courses, brand deals, YouTube
+    modules_needed:
+      - content
+      - research
+      - finance
+      - analytics
+      - website
+    credentials_needed:
+      - instagram
+      - tiktok
+      - facebook_ads
+      - youtube
+
+# ============================================================
+# APPROVAL SYSTEM
+# ============================================================
+
+approval:
+  default: daniel_approves_all
+  tier_1_internal:
+    gate: pre_run
+    types: [research, finance]
+  tier_2_public:
+    gate: pre_run_and_pre_publish
+    types: [content, social_posts]
+  tier_3_financial:
+    gate: pre_run_and_pre_action
+    types: [action, comms]
+    notify: immediate
+
+# ============================================================
+# TASK ROUTING
+# ============================================================
+
+task_routing:
+  fast_lane:
+    host: macbook-pro
+    model: llama3.2:3b
+    triggers:
+      - reply_draft
+      - stock_alert
+      - daily_summary
+      - classification
+      - short_notification
+  heavy_lane:
+    host: macbook-pro
+    model: llama3.3:70b
+    triggers:
+      - research
+      - content_creation
+      - document_analysis
+      - financial_forecast
+      - campaign_strategy
+  fallback:
+    strategy: queue_and_wait
+    note: All inference is on MacBook Pro only. If unreachable, tasks queue until it returns.
+
+# ============================================================
+# SCHEDULING
+# ============================================================
+
+scheduling:
+  overnight_window: "23:00-07:00"
+  workspace_windows:
+    candles: "monday 07:00"
+    cars: "daily 06:00"
+    nursing_massage: "monday 08:00"
+    food_brand: "friday 08:00"
+    property: "sunday 09:00"
+  priority_queue: true
+
+# ============================================================
+# OUTPUT PREFERENCES
+# ============================================================
+
+output:
+  default_format: markdown
+  user_facing:
+    summary_lines: 5
+    include_report_link: true
+  operator_facing:
+    include_tools_called: true
+    include_confidence: true
+    include_sources: true
+    include_token_count: true
+  analytics:
+    enabled: true
+    digest_frequency: weekly
+
+# ============================================================
+# CREDENTIALS
+# Never store values here - values live in .env
+# ============================================================
+
+credentials:
+
+  etsy_api:
+    status: pending
+    apply_at: etsy.com/developers
+    cost: free
+
+  facebook_graph_api:
+    status: pending
+    apply_at: developers.facebook.com
+    cost: free
+
+  tiktok_api:
+    status: pending
+    apply_at: developers.tiktok.com
+    cost: free
+
+  youtube_data_api:
+    status: pending
+    apply_at: console.cloud.google.com
+    cost: free
+
+  gmail_api:
+    status: pending
+    apply_at: console.cloud.google.com
+    cost: free
+
+  google_drive_api:
+    status: pending
+    apply_at: console.cloud.google.com
+    cost: free
+
+  dvla_api:
+    status: pending
+    apply_at: developer-portal.driver-vehicle-licensing.api.gov.uk
+    cost: free
+
+  mot_history_api:
+    status: pending
+    apply_at: documentation.history.mot.api.gov.uk
+    cost: free
+
+  land_registry_api:
+    status: pending
+    apply_at: use-land-property-data.service.gov.uk
+    cost: free
+
+  companies_house_api:
+    status: pending
+    apply_at: developer.company-information.service.gov.uk
+    cost: free
+
+  tailscale_auth:
+    status: lenovo_enrolled
+    apply_at: tailscale.com
+    cost: free

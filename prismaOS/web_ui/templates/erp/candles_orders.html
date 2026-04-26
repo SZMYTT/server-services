@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Orders — Candles — PrismaOS{% endblock %}
+{% block page_title %}Orders{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Candles · Etsy order management</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Orders</span>
+    <div class="stat-number">{{ stats.total }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Open</span>
+    <div class="stat-number" style="{% if stats.open_orders > 0 %}color:var(--c-gold-dark){% endif %}">{{ stats.open_orders }}</div>
+    <div class="stat-trend">Awaiting processing</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Processing</span>
+    <div class="stat-number">{{ stats.processing }}</div>
+    <div class="stat-trend">Being prepared</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Revenue</span>
+    <div class="stat-number" style="color:var(--c-success)">£{{ "%.2f"|format(stats.revenue|float) }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+</div>
+
+<!-- Monthly order volume chart -->
+<div class="card mb-32" style="padding:24px;">
+  <h2 class="card-title mb-16">Monthly Order Volume</h2>
+  <div style="position:relative; height:200px;">
+    <canvas id="ordersChart"></canvas>
+  </div>
+</div>
+
+<!-- Header row -->
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">All Orders</h2>
+  <button class="btn btn-secondary" onclick="openModal('addOrderModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add Order
+  </button>
+</div>
+
+<!-- Status filter tabs -->
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterOrders('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterOrders('open')">Open</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterOrders('processing')">Processing</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterOrders('shipped')">Shipped</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterOrders('completed')">Completed</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if orders %}
+  <table class="data-table" id="orders-table">
+    <thead>
+      <tr>
+        <th>Order</th>
+        <th>Customer</th>
+        <th>Total</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr data-status="{{ o.status }}">
+        <td>
+          <div class="td-primary">{% if o.etsy_order_id %}#{{ o.etsy_order_id }}{% else %}Manual{% endif %}</div>
+          {% if o.shipping_address %}
+          <div style="font-size:12px; color:var(--c-text-muted); margin-top:2px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ o.shipping_address }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <div class="td-primary">{{ o.customer_name }}</div>
+          {% if o.customer_email %}<div class="td-mono">{{ o.customer_email }}</div>{% endif %}
+        </td>
+        <td>
+          <div class="td-primary">£{{ "%.2f"|format(o.total|float) }}</div>
+          <div style="font-size:11px; color:var(--c-text-muted);">+£{{ "%.2f"|format(o.shipping|float) }} ship</div>
+        </td>
+        <td><span class="badge badge-order-{{ o.status }}">{{ o.status | replace('_',' ') | title }}</span></td>
+        <td class="td-mono">{{ o.order_date.strftime('%d %b %Y') if o.order_date else '—' }}</td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:130px;" onchange="updateOrderStatus('{{ o.id }}', this.value)">
+            {% for s in ['open','processing','shipped','completed','cancelled','refunded'] %}
+            <option value="{{ s }}" {% if s == o.status %}selected{% endif %}>{{ s | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V11"/></svg>
+    <h3>No orders yet</h3>
+    <p>Add your first order manually or sync from Etsy.</p>
+    <button class="btn btn-secondary" onclick="openModal('addOrderModal')">Add Order</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Order Modal -->
+<div class="modal-backdrop" id="addOrderModal" style="display:none;" onclick="closeModal('addOrderModal', event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>New Order</h3>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid; gap:16px;">
+        <div>
+          <label class="form-label">Customer Name *</label>
+          <input class="form-input" id="o-customer-name" placeholder="e.g. Jane Smith" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Customer Email</label>
+            <input class="form-input" id="o-customer-email" placeholder="jane@example.com" type="email" />
+          </div>
+          <div>
+            <label class="form-label">Etsy Order ID</label>
+            <input class="form-input" id="o-etsy-id" placeholder="e.g. 1234567890" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Order Total (£)</label>
+            <input class="form-input" id="o-total" type="number" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label class="form-label">Shipping (£)</label>
+            <input class="form-input" id="o-shipping" type="number" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Shipping Address</label>
+          <input class="form-input" id="o-address" placeholder="Full shipping address" />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="o-notes" rows="2" placeholder="Any order notes..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addOrderModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitOrder()">Add Order</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-order-open       { background: rgba(191,168,128,.2); color: var(--c-gold-dark); border-color: var(--c-gold); }
+  .badge-order-processing { background: var(--c-hover-dark); color: var(--c-text-on-dark-m); }
+  .badge-order-shipped    { background: rgba(42,91,107,.15); color: var(--c-info); }
+  .badge-order-completed  { background: rgba(58,107,74,.12); color: var(--c-success); }
+  .badge-order-cancelled  { background: var(--c-card-border); color: var(--c-text-muted); }
+  .badge-order-refunded   { background: rgba(139,58,42,.12); color: var(--c-error); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterOrders(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#orders-table tbody tr').forEach(row => {
+      row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+  }
+  async function updateOrderStatus(id, status) {
+    const r = await fetch(`/api/erp/candles/orders/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Status updated'); else toast('Update failed', 'error');
+  }
+  async function submitOrder() {
+    const payload = {
+      customer_name: document.getElementById('o-customer-name').value,
+      customer_email: document.getElementById('o-customer-email').value,
+      etsy_order_id: document.getElementById('o-etsy-id').value,
+      total: parseFloat(document.getElementById('o-total').value) || 0,
+      shipping: parseFloat(document.getElementById('o-shipping').value) || 0,
+      shipping_address: document.getElementById('o-address').value,
+      notes: document.getElementById('o-notes').value,
+    };
+    if (!payload.customer_name) { toast('Customer name required', 'error'); return; }
+    const r = await fetch('/api/erp/candles/orders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await r.json();
+    if (d.success) { toast('Order added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed to add order', 'error');
+  }
+
+  // ── Monthly Orders Chart ──────────────────────────────────────
+  (async () => {
+    try {
+      const r = await fetch('/api/erp/candles/orders/chart');
+      const d = await r.json();
+      if (!d.labels?.length) return;
+      const ctx = document.getElementById('ordersChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: d.labels,
+          datasets: [
+            {
+              label: 'Orders',
+              data: d.orders,
+              backgroundColor: 'rgba(191,168,128,0.55)',
+              borderColor: 'rgba(191,168,128,1)',
+              borderWidth: 1,
+              borderRadius: 4,
+              yAxisID: 'yOrders',
+            },
+            {
+              label: 'Revenue (£)',
+              data: d.revenue,
+              type: 'line',
+              borderColor: 'rgba(58,107,74,1)',
+              backgroundColor: 'rgba(58,107,74,0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'yRevenue',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#C8BCA8', font: { family: 'DM Sans', size: 12 } } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ctx.dataset.yAxisID === 'yRevenue'
+                  ? ` Revenue: £${ctx.parsed.y.toLocaleString('en-GB', {minimumFractionDigits:2})}`
+                  : ` Orders: ${ctx.parsed.y}`,
+              },
+            },
+          },
+          scales: {
+            x: { ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            yOrders: {
+              type: 'linear', position: 'left',
+              ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 }, stepSize: 1 },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+            },
+            yRevenue: {
+              type: 'linear', position: 'right',
+              ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 }, callback: v => '£' + v.toLocaleString('en-GB') },
+              grid: { display: false },
+            },
+          },
+        },
+      });
+    } catch(e) { console.warn('Orders chart failed', e); }
+  })();
+</script>
+{% endblock %}

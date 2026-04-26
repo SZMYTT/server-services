@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Finance — {{ ws_meta[active_ws].name }} — PrismaOS{% endblock %}
+{% block page_title %}Finance{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">{{ ws_meta[active_ws].name }} · Income, expenses &amp; P&amp;L</p>{% endblock %}
+
+{% block content %}
+
+<!-- Summary Stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Income</span>
+    <div class="stat-number" style="color:var(--c-success)">£{{ "{:,.0f}".format(summary.total_income|float) }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total Expenses</span>
+    <div class="stat-number" style="color:var(--c-error)">£{{ "{:,.0f}".format(summary.total_expenses|float) }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Net Profit</span>
+    <div class="stat-number" style="color:{% if summary.net|float >= 0 %}var(--c-success){% else %}var(--c-error){% endif %}">
+      {% if summary.net|float >= 0 %}+{% endif %}£{{ "{:,.0f}".format(summary.net|float|abs) }}
+    </div>
+    <div class="stat-trend">Income minus expenses</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">This Month</span>
+    <div class="stat-number" style="color:{% if summary.net_this_month|float >= 0 %}var(--c-success){% else %}var(--c-error){% endif %}">
+      {% if summary.net_this_month|float >= 0 %}+{% endif %}£{{ "{:,.0f}".format(summary.net_this_month|float|abs) }}
+    </div>
+    <div class="stat-trend">Net this calendar month</div>
+  </div>
+</div>
+
+<!-- Monthly Chart -->
+<div class="card mb-32" style="padding:24px;">
+  <h2 class="card-title mb-16">Monthly P&amp;L</h2>
+  <div style="position:relative; height:220px;">
+    <canvas id="financeChart"></canvas>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Transactions</h2>
+  <button class="btn btn-secondary" onclick="openModal('addTxModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add Transaction
+  </button>
+</div>
+
+<!-- Type filter -->
+<div class="flex gap-8 mb-16" id="type-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterType('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterType('income')" style="color:var(--c-success);">Income</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterType('expense')" style="color:var(--c-error);">Expenses</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if transactions %}
+  <table class="data-table" id="tx-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Category</th>
+        <th>Type</th>
+        <th style="text-align:right;">Amount</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr data-type="{{ tx.type }}">
+        <td class="td-mono">{{ tx.date.strftime('%d %b %Y') if tx.date else '—' }}</td>
+        <td>
+          <div class="td-primary">{{ tx.description }}</div>
+          {% if tx.notes %}<div style="font-size:12px; color:var(--c-text-muted);">{{ tx.notes }}</div>{% endif %}
+        </td>
+        <td><span class="badge badge-cat-{{ tx.category }}">{{ tx.category | replace('_',' ') | title }}</span></td>
+        <td>
+          {% if tx.type == 'income' %}
+          <span style="color:var(--c-success); font-weight:500; font-size:12px;">▲ Income</span>
+          {% else %}
+          <span style="color:var(--c-error); font-weight:500; font-size:12px;">▼ Expense</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right;">
+          <span style="font-weight:600; color:{% if tx.type == 'income' %}var(--c-success){% else %}var(--c-error){% endif %};">
+            {% if tx.type == 'income' %}+{% else %}−{% endif %}£{{ "%.2f"|format(tx.amount|float) }}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-xs btn-danger-ghost" onclick="deleteTx('{{ tx.id }}')">✕</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <h3>No transactions yet</h3>
+    <p>Record income and expenses to track your P&L.</p>
+    <button class="btn btn-secondary" onclick="openModal('addTxModal')">Add Transaction</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Transaction Modal -->
+<div class="modal-backdrop" id="addTxModal" style="display:none;" onclick="closeModal('addTxModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Transaction</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Type *</label>
+            <select class="form-input form-select" id="tx-type">
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Category *</label>
+            <select class="form-input form-select" id="tx-cat">
+              <option value="sales">Sales</option>
+              <option value="materials">Materials</option>
+              <option value="shipping">Shipping</option>
+              <option value="marketing">Marketing</option>
+              <option value="salary">Salary</option>
+              <option value="fees">Fees</option>
+              <option value="tax">Tax</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Description *</label>
+          <input class="form-input" id="tx-desc" placeholder="e.g. Etsy weekly payout" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Amount (£) *</label>
+            <input class="form-input" id="tx-amount" type="number" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label class="form-label">Date</label>
+            <input class="form-input" id="tx-date" type="date" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="tx-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addTxModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitTx()">Add</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-cat-sales      { background:rgba(58,107,74,.12); color:var(--c-success); }
+  .badge-cat-materials  { background:rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-cat-shipping   { background:rgba(42,91,107,.12); color:var(--c-info); }
+  .badge-cat-marketing  { background:rgba(78,111,87,.12); color:var(--c-active-dark); }
+  .badge-cat-salary     { background:rgba(139,58,42,.12); color:var(--c-error); }
+  .badge-cat-fees       { background:var(--c-card-border); color:var(--c-text-muted); }
+  .badge-cat-tax        { background:rgba(155,122,42,.15); color:var(--c-warning); }
+  .badge-cat-other      { background:var(--c-input-bg); color:var(--c-text-secondary); }
+</style>
+<script>
+  const WS = "{{ active_ws }}";
+
+  // ── Finance Chart ──────────────────────────────────────────────
+  (async () => {
+    try {
+      const r = await fetch(`/api/erp/finance/${WS}/chart`);
+      const d = await r.json();
+      if (!d.labels?.length) return;
+      const ctx = document.getElementById('financeChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: d.labels,
+          datasets: [
+            {
+              label: 'Income',
+              data: d.income,
+              backgroundColor: 'rgba(58,107,74,0.75)',
+              borderColor: 'rgba(58,107,74,1)',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+            {
+              label: 'Expenses',
+              data: d.expenses,
+              backgroundColor: 'rgba(191,168,128,0.55)',
+              borderColor: 'rgba(191,168,128,1)',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#C8BCA8', font: { family: 'DM Sans', size: 12 } } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` £${ctx.parsed.y.toLocaleString('en-GB', {minimumFractionDigits:2})}`,
+              },
+            },
+          },
+          scales: {
+            x: { ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: {
+              ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 }, callback: v => '£' + v.toLocaleString('en-GB') },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+            },
+          },
+        },
+      });
+    } catch(e) { console.warn('Finance chart failed', e); }
+  })();
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterType(type) {
+    document.querySelectorAll('#type-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#tx-table tbody tr').forEach(row => {
+      row.style.display = (type === 'all' || row.dataset.type === type) ? '' : 'none';
+    });
+  }
+  async function deleteTx(id) {
+    if (!confirm('Delete this transaction?')) return;
+    const r = await fetch(`/api/erp/finance/transactions/${id}`, {method:'DELETE'});
+    const d = await r.json();
+    if (d.success) { toast('Deleted'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+  async function submitTx() {
+    const today = new Date().toISOString().split('T')[0];
+    const p = {
+      workspace: WS,
+      type: document.getElementById('tx-type').value,
+      category: document.getElementById('tx-cat').value,
+      description: document.getElementById('tx-desc').value,
+      amount: parseFloat(document.getElementById('tx-amount').value) || 0,
+      date: document.getElementById('tx-date').value || today,
+      notes: document.getElementById('tx-notes').value,
+    };
+    if (!p.description || !p.amount) { toast('Description and amount required', 'error'); return; }
+    const r = await fetch('/api/erp/finance/transactions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Transaction added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

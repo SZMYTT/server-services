@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ module_name }} — {{ ws_meta[active_ws].name }} — PrismaOS{% endblock %}
+{% block page_title %}{{ module_name }}{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">{{ ws_meta[active_ws].name }} — AI-assisted {{ module_name | lower }} management.</p>{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-24">
+  <div></div>
+  <a href="/{{ active_ws }}/task" class="btn btn-secondary">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Run AI Task
+  </a>
+</div>
+
+<!-- Module placeholder notice -->
+<div class="alert alert-info mb-24">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01"/></svg>
+  <div>
+    <strong>Phase 5 — ERP integration pending.</strong> This module will show live database records once the stock, orders, and finance tables are built. For now, AI task outputs for this module appear below.
+  </div>
+</div>
+
+<!-- Recent tasks for this module -->
+<div>
+  <h2 class="card-title mb-16">Recent AI Outputs — {{ module_name }}</h2>
+  <div class="card" style="padding:0; overflow:hidden;">
+    {% if recent_tasks %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Status</th>
+          <th>Risk</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in recent_tasks %}
+        <tr>
+          <td>
+            <div class="td-primary">{{ t.task_type | replace('_', ' ') | title }}</div>
+            <div style="font-size:12px; color:var(--c-text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:320px;">
+              {{ t.input[:80] if t.input else '—' }}
+            </div>
+          </td>
+          <td><span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span></td>
+          <td><span class="badge badge-{{ t.risk_level }}">{{ t.risk_level }}</span></td>
+          <td class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '—' }}</td>
+          <td>
+            {% if t.status in ('queued', 'pending_approval') and user.role == 'operator' %}
+            <div class="task-row-actions">
+              <button class="btn-approve" onclick="approveTask('{{ t.id }}')">Approve</button>
+              <button class="btn-decline" onclick="declineTask('{{ t.id }}')">Decline</button>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <h3>No activity yet</h3>
+      <p>Tasks submitted for {{ module_name }} will appear here once run.</p>
+      <a href="/{{ active_ws }}/task" class="btn btn-secondary">Submit a task</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function approveTask(id) {
+    await fetch(`/api/tasks/${id}/approve`, {method:'POST'});
+    location.reload();
+  }
+  async function declineTask(id) {
+    await fetch(`/api/tasks/${id}/decline`, {method:'POST'});
+    location.reload();
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,3 @@
+# Google API credentials — never commit these
+*.json
+*.p12

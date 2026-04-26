@@ -1,0 +1,3 @@
+:80 {
+    respond "SystemOS Caddy is running" 200
+}

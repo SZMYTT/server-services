@@ -1,0 +1,268 @@
+/* web_ui/static/css/style.css
+   Prisma OS — Premium Forest Cream Design System
+*/
+
+* { box-sizing: border-box; }
+
+:root {
+  --bg-cream: #F8F0E1;
+  --forest-dark: #1F3B2D;
+  --forest-mid: #4E6F57;
+  --surface-light: #DDE7D5;
+  --accent-tan: #BFA880;
+
+  --shadow-premium: 0 4px 12px rgba(31, 59, 45, 0.08);
+  --shadow-hover: 0 8px 24px rgba(31, 59, 45, 0.12);
+}
+
+body {
+  background-color: var(--bg-cream);
+  color: var(--forest-mid);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, .display-font {
+  font-family: 'Playfair Display', serif;
+  color: var(--forest-dark);
+  font-weight: 600;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Typography Scale ──────────────────────────────── */
+.text-caption { font-size: 12px; }
+.text-body { font-size: 14px; }
+.text-label { font-size: 16px; font-weight: 500; }
+.text-subheading { font-size: 20px; font-family: 'Playfair Display', serif; }
+.text-heading { font-size: 28px; font-family: 'Playfair Display', serif; }
+.text-display { font-size: 40px; font-family: 'Playfair Display', serif; }
+
+/* ── Utilities ────────────────────────────────────── */
+.bg-cream { background-color: var(--bg-cream); }
+.bg-forest-dark { background-color: var(--forest-dark); }
+.bg-forest-mid { background-color: var(--forest-mid); }
+.bg-surface-light { background-color: var(--surface-light); }
+.bg-accent-tan { background-color: var(--accent-tan); }
+
+.text-cream { color: var(--bg-cream); }
+.text-forest-dark { color: var(--forest-dark); }
+.text-forest-mid { color: var(--forest-mid); }
+.text-surface-light { color: var(--surface-light); }
+.text-accent-tan { color: var(--accent-tan); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-light); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-tan); }
+
+/* ── Sidebar Navigation ───────────────────────────── */
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bg-cream);
+  border-left: 3px solid transparent;
+  transition: all 0.15s ease;
+}
+.sidebar-nav-item:hover {
+  background-color: rgba(248, 240, 225, 0.05); /* Slight cream overlay */
+}
+.sidebar-nav-item.active {
+  background-color: var(--bg-cream);
+  color: var(--forest-dark);
+  border-left-color: var(--accent-tan);
+  border-radius: 0 4px 4px 0;
+}
+
+/* ── Cards and Surfaces ───────────────────────────── */
+.glass, .stat-card {
+  background-color: var(--surface-light);
+  border: 1px solid var(--bg-cream);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--shadow-premium);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.stat-card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+/* ── Buttons ──────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.btn-primary {
+  background-color: var(--forest-dark);
+  color: var(--bg-cream);
+}
+.btn-primary:hover {
+  background-color: #12221A; /* shifted darker */
+}
+.btn-secondary {
+  background-color: var(--forest-mid);
+  color: var(--bg-cream);
+}
+.btn-secondary:hover {
+  background-color: #3B5342;
+}
+.btn-ghost {
+  background-color: transparent;
+  border: 1px solid var(--forest-mid);
+  color: var(--forest-mid);
+}
+.btn-ghost:hover {
+  background-color: rgba(78, 111, 87, 0.05);
+}
+.btn-danger {
+  background-color: #7B3E35; /* deep red-brown */
+  color: var(--bg-cream);
+}
+.btn-danger:hover {
+  background-color: #5A2D27;
+}
+
+/* ── Form Inputs ──────────────────────────────────── */
+.input-label {
+  display: block;
+  font-size: 11px;
+  font-variant: small-caps;
+  color: var(--accent-tan);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.prisma-input {
+  width: 100%;
+  background-color: var(--bg-cream);
+  border: 1px solid var(--surface-light);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--forest-dark);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+.prisma-input::placeholder {
+  color: rgba(78, 111, 87, 0.5); /* #4E6F57 at 50% */
+}
+.prisma-input:focus {
+  outline: none;
+  border-color: var(--forest-mid);
+  box-shadow: 0 0 0 2px var(--accent-tan);
+}
+
+/* ── Status Badges ────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px; /* subtle corners, no pills */
+}
+.badge-queued, .badge-inactive {
+  background-color: var(--surface-light);
+  color: var(--forest-mid);
+}
+.badge-running, .badge-pending, .badge-active {
+  background-color: var(--forest-mid);
+  color: var(--bg-cream);
+}
+.badge-done, .badge-approved {
+  background-color: var(--forest-dark);
+  color: var(--bg-cream);
+}
+.badge-failed {
+  background-color: #7B3E35; /* deep red-brown */
+  color: var(--bg-cream);
+}
+.badge-declined {
+  background-color: var(--accent-tan);
+  color: var(--forest-dark);
+}
+
+/* Task Risk Badges (left border stripe mapping logic simulated via classes) */
+.badge-internal { border-left: 3px solid var(--forest-mid); }
+.badge-public { border-left: 3px solid var(--accent-tan); }
+.badge-financial { border-left: 3px solid var(--forest-dark); }
+
+/* ── Data Tables ──────────────────────────────────── */
+.prisma-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.prisma-table thead tr {
+  background-color: var(--surface-light);
+}
+.prisma-table thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--forest-dark);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface-light);
+}
+.prisma-table tbody tr {
+  height: 48px; /* compact */
+  background-color: #FFFFFF;
+  border-bottom: 1px solid var(--surface-light);
+  transition: background-color 0.15s;
+}
+.prisma-table tbody tr:nth-child(even) {
+  background-color: var(--bg-cream);
+}
+.prisma-table tbody tr:hover {
+  background-color: rgba(221, 231, 213, 0.6); /* --surface-light at 60% */
+}
+.prisma-table tbody td {
+  padding: 0 16px;
+  font-size: 14px;
+  color: var(--forest-mid);
+  vertical-align: middle;
+}
+
+/* ── Modal overlay ────────────────────────────────── */
+.modal-backdrop {
+  background-color: rgba(31, 59, 45, 0.6);
+}
+.modal-card {
+  background-color: var(--bg-cream);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.modal-header {
+  background-color: var(--surface-light);
+  padding: 16px 24px;
+}
+
+/* ── Structural Gaps ──────────────────────────────── */
+.gap-components { gap: 24px; }
+.gap-sections { margin-top: 40px; margin-bottom: 40px; }
+
+/* ── Anim ─────────────────────────────────────────── */
+.fade-in { animation: fadeInUp 0.4s ease-out both; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

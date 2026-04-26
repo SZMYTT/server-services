@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PrismaOS{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Good {% if now_hour < 12 %}morning{% elif now_hour < 18 %}afternoon{% else %}evening{% endif %}, {{ user.username | title }}. Here's your operational overview.</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stat cards -->
+<div class="grid-4 mb-40">
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-8">
+      <span class="stat-label">Active Tasks</span>
+      <div class="stat-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+      </div>
+    </div>
+    <div class="stat-number">{{ metrics.active_tasks }}</div>
+    <div class="stat-trend">Queued, running or approved</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-8">
+      <span class="stat-label">Pending Approval</span>
+      <div class="stat-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+    </div>
+    <div class="stat-number" style="{% if metrics.pending_approvals > 0 %}color:var(--c-gold-dark){% endif %}">{{ metrics.pending_approvals }}</div>
+    <div class="stat-trend">
+      {% if metrics.pending_approvals > 0 %}
+        <a href="/approvals" style="color:var(--c-gold-dark); font-weight:500;">Review now →</a>
+      {% else %}
+        All clear
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-8">
+      <span class="stat-label">Completed</span>
+      <div class="stat-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+    </div>
+    <div class="stat-number" style="color:var(--c-success)">{{ metrics.completed_tasks }}</div>
+    <div class="stat-trend">Total tasks done</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="flex items-center justify-between mb-8">
+      <span class="stat-label">Active Schedules</span>
+      <div class="stat-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+      </div>
+    </div>
+    <div class="stat-number">{{ metrics.active_schedules }}</div>
+    <div class="stat-trend">Automated recurring tasks</div>
+  </div>
+
+</div>
+
+<!-- Workspace overview -->
+{% if user.role == 'operator' %}
+<div class="mb-40">
+  <div class="flex items-center justify-between mb-16">
+    <h2 class="card-title">Workspace Overview</h2>
+    <a href="/queue" class="btn btn-ghost btn-sm">View all tasks</a>
+  </div>
+  <div class="grid-3">
+    {% for ws_id, meta in ws_meta.items() %}
+      {% if ws_id != 'operator' %}
+      <a href="/{{ ws_id }}/overview" class="card" style="display:flex; align-items:center; gap:16px; transition: border-color 0.15s, box-shadow 0.15s; text-decoration:none;"
+         onmouseover="this.style.borderColor='var(--c-gold)'; this.style.boxShadow='0 2px 8px rgba(191,168,128,0.15)'"
+         onmouseout="this.style.borderColor='var(--c-card-border)'; this.style.boxShadow='var(--shadow-card)'">
+        <div style="width:44px; height:44px; border-radius:8px; background-color:var(--c-canvas); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0;">
+          {{ meta.icon }}
+        </div>
+        <div class="min-w-0 flex-1">
+          <div style="font-size:16px; font-weight:600; color:var(--c-text-primary); font-family:'Playfair Display',serif;">{{ meta.name }}</div>
+          <div style="font-size:13px; color:var(--c-text-muted); margin-top:2px;">{{ meta.owner }} · {{ meta.platform }}</div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-card-border)" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+        </svg>
+      </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Recent tasks -->
+<div>
+  <div class="flex items-center justify-between mb-16">
+    <h2 class="card-title">Recent Tasks</h2>
+    <a href="/queue" class="btn btn-ghost btn-sm">View all →</a>
+  </div>
+  <div class="card" style="padding:0; overflow:hidden;">
+    {% if recent_tasks %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Workspace</th>
+            <th>Status</th>
+            <th>Risk</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in recent_tasks %}
+          <tr>
+            <td>
+              <div class="td-primary">{{ t.task_type | replace('_',' ') | title }}</div>
+              <div class="td-mono">{{ t.id[:8] if t.id else '—' }}</div>
+            </td>
+            <td><span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span></td>
+            <td><span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span></td>
+            <td><span class="badge badge-{{ t.risk_level }}">{{ t.risk_level }}</span></td>
+            <td class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <h3>No tasks yet</h3>
+        <p>Tasks submitted via Discord or the web interface will appear here.</p>
+        <a href="/candles/task" class="btn btn-secondary">Submit your first task</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

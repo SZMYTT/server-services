@@ -1,0 +1,16 @@
+[Unit]
+Description=PrismaOS Orchestrator (Task Runner)
+After=network.target
+
+[Service]
+User=szmyt
+Group=szmyt
+WorkingDirectory=/home/szmyt/server-services/prismaOS
+Environment=PYTHONPATH=/home/szmyt/server-services
+EnvironmentFile=/home/szmyt/server-services/prismaOS/.env
+ExecStart=/home/szmyt/server-services/prismaOS/venv/bin/python3 -m services.orchestrator
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

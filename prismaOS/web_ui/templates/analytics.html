@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Analytics — PrismaOS{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Usage and performance across all workspaces.</p>{% endblock %}
+
+{% block content %}
+
+<!-- Summary stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total This Week</span>
+    <div class="stat-number">{{ total_tasks }}</div>
+    <div class="stat-trend">Tasks across all workspaces</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Completed</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ completed }}</div>
+    <div class="stat-trend">Successfully executed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Declined</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ declined }}</div>
+    <div class="stat-trend">Rejected this week</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Failed</span>
+    <div class="stat-number" style="color:var(--c-error)">{{ failed }}</div>
+    <div class="stat-trend">Agent errors</div>
+  </div>
+</div>
+
+<!-- Workspace breakdown -->
+<div class="grid-2">
+  <div>
+    <h2 class="card-title mb-16">Tasks by Workspace</h2>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="data-table">
+        <thead><tr><th>Workspace</th><th>Total</th><th>Done</th><th>Pending</th><th>Failed</th></tr></thead>
+        <tbody>
+          {% for ws_id, meta in ws_meta.items() %}
+          {% if ws_id != 'operator' %}
+          <tr>
+            <td>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:18px;">{{ meta.icon }}</span>
+                <span class="td-primary">{{ meta.name }}</span>
+              </div>
+            </td>
+            <td>{{ ws_stats.get(ws_id, {}).get('total', 0) }}</td>
+            <td style="color:var(--c-success);">{{ ws_stats.get(ws_id, {}).get('done', 0) }}</td>
+            <td style="color:var(--c-gold-dark);">{{ ws_stats.get(ws_id, {}).get('pending', 0) }}</td>
+            <td style="color:var(--c-error);">{{ ws_stats.get(ws_id, {}).get('failed', 0) }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <h2 class="card-title mb-16">Activity Chart</h2>
+    <div class="card">
+      <canvas id="activity-chart" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ctx = document.getElementById('activity-chart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: {{ chart_labels | tojson | safe }},
+        datasets: [{
+          label: 'Tasks submitted',
+          data: {{ chart_data | tojson | safe }},
+          backgroundColor: '#1F3B2D',
+          borderRadius: 4,
+          barThickness: 20,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#162920',
+            titleColor: '#F2EBD9',
+            bodyColor: '#9DB8AC',
+            padding: 10,
+            cornerRadius: 8,
+            titleFont: { family: 'DM Sans', size: 12 },
+            bodyFont: { family: 'DM Sans', size: 12 },
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#E2D9C4', lineWidth: 1 },
+            ticks: { color: '#6B8578', font: { family:'DM Sans', size:11 } }
+          },
+          y: {
+            grid: { color: '#E2D9C4', lineWidth: 1 },
+            ticks: { color: '#6B8578', font: { family:'DM Sans', size:11 } },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}

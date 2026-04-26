@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Logs — PrismaOS{% endblock %}
+{% block page_title %}Task Logs{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Full task history with step-level detail and retry controls.</p>{% endblock %}
+
+{% block content %}
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if tasks %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Task ID</th>
+        <th>Type</th>
+        <th>Workspace</th>
+        <th>Status</th>
+        <th>User</th>
+        <th>Started</th>
+        <th>Completed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tasks %}
+      <tr onclick="toggleOutput(this, '{{ t.id }}')" style="cursor:pointer;">
+        <td style="width:4px; padding:0;">
+          <div style="width:4px; height:100%; background-color: {% if t.risk_level == 'financial' %}var(--c-status-fin){% elif t.risk_level == 'public' %}var(--c-status-public){% else %}var(--c-status-internal){% endif %};"></div>
+        </td>
+        <td class="td-mono">{{ t.id[:8] if t.id else '—' }}</td>
+        <td class="td-primary">{{ t.task_type | replace('_',' ') | title }}</td>
+        <td><span class="ws-pill">{{ t.workspace | replace('_',' ') | title }}</span></td>
+        <td><span class="badge badge-{{ t.status }}">{{ t.status | replace('_',' ') }}</span></td>
+        <td style="font-size:13px; color:var(--c-text-muted);">{{ t.user_name }}</td>
+        <td class="td-mono">{{ t.created_at.strftime('%d %b %H:%M') if t.created_at else '—' }}</td>
+        <td class="td-mono">{{ t.completed_at.strftime('%d %b %H:%M') if t.completed_at else '—' }}</td>
+      </tr>
+      {% if t.output %}
+      <tr class="output-row" id="out-{{ t.id }}" style="display:none; background-color:var(--c-input-bg);">
+        <td colspan="8" style="padding:16px 20px;">
+          <pre style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--c-text-secondary); white-space:pre-wrap; word-break:break-word; line-height:1.7; max-height:300px; overflow-y:auto;">{{ t.output }}</pre>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+    <h3>No logs yet</h3>
+    <p>Task history will appear here as tasks are processed.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleOutput(row, taskId) {
+    const outRow = document.getElementById('out-' + taskId);
+    if (outRow) {
+      outRow.style.display = outRow.style.display === 'none' ? '' : 'none';
+    }
+  }
+</script>
+{% endblock %}

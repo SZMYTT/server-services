@@ -1,0 +1,37 @@
+# scripts/prisma.service
+# Systemd service file for Prisma Discord bot.
+# Copy to /etc/systemd/system/prisma.service on Lenovo.
+#
+# Then run:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable prisma
+#   sudo systemctl start prisma
+#
+# Check status:
+#   sudo systemctl status prisma
+#
+# View logs:
+#   journalctl -u prisma -f
+
+[Unit]
+Description=Prisma — SystemOS Discord Bot
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=daniel
+WorkingDirectory=/home/daniel/systemOS
+Environment=PATH=/home/daniel/systemOS/venv/bin
+ExecStart=/home/daniel/systemOS/venv/bin/python bot/discord_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=prisma
+
+# Restart on any failure
+# Waits 10 seconds before restarting to avoid rapid loops
+
+[Install]
+WantedBy=multi-user.target

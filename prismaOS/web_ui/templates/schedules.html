@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Schedules — PrismaOS{% endblock %}
+{% block page_title %}Schedules{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">All active and paused automated task schedules.</p>{% endblock %}
+
+{% block content %}
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if schedules %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Schedule</th>
+        <th>Workspace</th>
+        <th>Task Type</th>
+        <th>Cron</th>
+        <th>Last Run</th>
+        <th>Next Run</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in schedules %}
+      <tr>
+        <td class="td-primary">{{ s.name }}</td>
+        <td><span class="ws-pill">{{ s.workspace | replace('_',' ') | title }}</span></td>
+        <td style="font-size:13px; color:var(--c-text-muted);">{{ s.task_type | replace('_',' ') | title }}</td>
+        <td class="td-mono">{{ s.cron_expression }}</td>
+        <td class="td-mono">{{ s.last_run.strftime('%d %b %H:%M') if s.last_run else '—' }}</td>
+        <td class="td-mono">{{ s.next_run.strftime('%d %b %H:%M') if s.next_run else '—' }}</td>
+        <td><span class="badge badge-{{ 'active' if s.active else 'inactive' }}">{{ 'Active' if s.active else 'Paused' }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+    </svg>
+    <h3>No schedules configured</h3>
+    <p>Recurring automated tasks will appear here once set up via the orchestrator.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

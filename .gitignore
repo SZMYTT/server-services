@@ -1,0 +1,48 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+config/user_hashes.yaml
+config/google_token.json
+config/google_service_account.json
+*.key
+*.pem
+
+# Research output (large generated files, not source code)
+researchOS/research/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Stale/duplicate directories
+JobOS/
+
+# Node (if any frontend tooling is added)
+node_modules/
+
+# Playwright browsers (installed separately)
+playwright-browsers/

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Library — supplyOS{% endblock %}
+{% block header_breadcrumb %}<span>Research Library</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="breadcrumb">supplyOS</div>
+  <h1 class="page-title">Research Library</h1>
+  <p class="page-subtitle">{{ stats.total_reports }} reports across {{ projects|length }} project{% if projects|length != 1 %}s{% endif %}</p>
+</div>
+
+{% if flash %}
+<div class="alert alert-{{ flash.type }}" style="margin-bottom:20px;">{{ flash.message }}</div>
+{% endif %}
+
+<!-- Stats -->
+<div class="stat-row">
+  <div class="stat-card">
+    <div class="stat-label">Total reports</div>
+    <div class="stat-number">{{ stats.total_reports }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Pending</div>
+    <div class="stat-number">{{ stats.pending }}</div>
+    {% if stats.pending > 0 %}
+    <div class="stat-sub">
+      <form method="POST" action="/api/run-all" style="display:inline;">
+        <button type="submit" class="btn btn-sm btn-gold" style="margin-top:4px;">Run all</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Done this week</div>
+    <div class="stat-number">{{ stats.done_week }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">LLM model</div>
+    <div class="stat-number" style="font-size:13px; font-family:'JetBrains Mono',monospace; line-height:1.4; padding-top:4px;">{{ llm_model }}</div>
+  </div>
+</div>
+
+<!-- Project grid -->
+{% if projects %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+  <h2 style="font-size:14px; font-weight:600; color:var(--c-text-muted); letter-spacing:0.8px; text-transform:uppercase;">Projects</h2>
+  <button class="btn btn-secondary btn-sm" onclick="openModal('modal-new-project')">+ New project</button>
+</div>
+
+<div class="card-grid">
+  {% for p in projects %}
+  <a href="/p/{{ p.slug }}" class="project-card">
+    <div class="project-icon">{{ p.icon }}</div>
+    <div class="project-name">{{ p.name }}</div>
+    {% if p.description %}<div class="project-desc">{{ p.description }}</div>{% endif %}
+    <div class="project-stats">
+      <div class="project-stat-item">
+        <span class="project-stat-num">{{ p.total_topics }}</span>&nbsp;topics
+      </div>
+      <div class="project-stat-item">
+        <span class="project-stat-num">{{ p.done_count }}</span>&nbsp;reports
+      </div>
+      {% if p.pending_count > 0 %}
+      <div class="project-stat-item">
+        <span class="badge badge-pending">{{ p.pending_count }} pending</span>
+      </div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card" style="text-align:center; padding:48px 20px;">
+  <div style="font-size:40px; margin-bottom:16px;">📚</div>
+  <h2 style="font-size:18px; margin-bottom:8px;">No projects yet</h2>
+  <p style="color:var(--c-text-muted); margin-bottom:20px;">Create a project to start organising your research.</p>
+  <button class="btn btn-primary" onclick="openModal('modal-new-project')">Create first project</button>
+</div>
+{% endif %}
+{% endblock %}

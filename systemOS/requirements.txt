@@ -1,0 +1,59 @@
+# requirements.txt
+# Python dependencies for SystemOS
+# Install with: pip install -r requirements.txt
+
+# ── Web framework ─────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# ── Database ──────────────────────────────────────────────────
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.35
+alembic==1.13.3           # database migrations
+
+# ── Discord bot ───────────────────────────────────────────────
+discord.py==2.4.0
+
+# ── HTTP client ───────────────────────────────────────────────
+httpx==0.27.2
+aiohttp==3.10.5
+
+# ── Vector memory ─────────────────────────────────────────────
+chromadb==0.5.15
+
+# ── Browser / scraping ────────────────────────────────────────
+crawl4ai>=0.8.0            # Playwright-backed scraper (replaces playwright/bs4/lxml)
+
+# ── LLM (Ollama local + Anthropic fallback) ───────────────────
+anthropic>=0.34.2
+
+# ── Task scheduling ───────────────────────────────────────────
+apscheduler==3.10.4
+
+# ── Environment and config ────────────────────────────────────
+python-dotenv==1.0.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# ── Logging ───────────────────────────────────────────────────
+loguru==0.7.2
+
+# ── Security ──────────────────────────────────────────────────
+bcrypt==5.0.0
+itsdangerous==2.2.0
+
+# ── Utilities ─────────────────────────────────────────────────
+uuid==1.30
+python-dateutil==2.9.0
+pytz==2024.2
+
+# ── Document parsing ──────────────────────────────────────────
+pypdf2==3.0.1             # PDF reading
+python-docx==1.1.2        # Word document reading
+
+# ── API integrations ──────────────────────────────────────────
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.149.0   # Gmail + Drive
+croniter==6.2.2

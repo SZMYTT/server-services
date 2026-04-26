@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ ws_meta[ws_id].name }} — PrismaOS{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">{{ ws_meta[ws_id].name }} workspace — modules &amp; configuration</p>{% endblock %}
+
+{% block content %}
+<div style="max-width:860px;">
+
+  <!-- Modules grid -->
+  <h2 class="card-title mb-16">Modules</h2>
+  <p style="font-size:13px; color:var(--c-text-muted); margin-bottom:24px;">
+    Turn modules on or off for this workspace. Core modules cannot be disabled.
+    Each module can have its own settings — click the module card to expand.
+  </p>
+
+  <div style="display:flex; flex-direction:column; gap:10px;" id="modules-list">
+    {% for mod in all_modules %}
+    <div class="card" id="mod-card-{{ mod.module }}" style="padding:0; overflow:hidden;">
+
+      <!-- Module header row -->
+      <div style="display:flex; align-items:center; gap:12px; padding:16px 20px; cursor:{% if mod.settings_schema %}pointer{% else %}default{% endif %};"
+           {% if mod.settings_schema %}onclick="toggleSettings('{{ mod.module }}')"{% endif %}>
+
+        <span style="font-size:20px; width:28px; text-align:center; flex-shrink:0;">{{ mod.icon }}</span>
+
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:600; font-size:14px; display:flex; align-items:center; gap:8px;">
+            {{ mod.name }}
+            {% if mod.core %}
+            <span style="font-size:10px; font-weight:500; color:var(--c-text-muted); background:var(--c-card-bg); border:1px solid var(--c-card-border); border-radius:4px; padding:1px 6px;">core</span>
+            {% endif %}
+          </div>
+          {% if mod.settings_schema %}
+          <div style="font-size:12px; color:var(--c-text-muted); margin-top:2px;">{{ mod.settings_schema | length }} setting{{ 's' if mod.settings_schema|length != 1 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Toggle -->
+        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+          {% if not mod.core %}
+          <label class="toggle-switch" onclick="event.stopPropagation();">
+            <input type="checkbox" id="toggle-{{ mod.module }}"
+                   {% if mod.enabled %}checked{% endif %}
+                   onchange="toggleModule('{{ ws_id }}', '{{ mod.module }}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          {% else %}
+          <span style="font-size:12px; color:var(--c-text-muted);">always on</span>
+          {% endif %}
+
+          {% if mod.settings_schema %}
+          <svg id="chevron-{{ mod.module }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               style="color:var(--c-text-muted); transition:transform .2s; flex-shrink:0;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Expandable settings panel -->
+      {% if mod.settings_schema %}
+      <div id="settings-{{ mod.module }}" style="display:none; border-top:1px solid var(--c-card-border); padding:16px 20px; background:var(--c-page-bg);">
+        <div style="display:grid; gap:14px;">
+          {% for field in mod.settings_schema %}
+          <div>
+            <label class="form-label">{{ field.label }}</label>
+            {% if field.type == 'readonly_link' %}
+              {% set link_val = 'https://' + request.headers.get('host', 'yourdomain.com') + field.path %}
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input class="form-input" value="{{ link_val }}" readonly id="link-{{ mod.module }}-{{ field.key }}"
+                       style="font-family:var(--font-mono, monospace); font-size:12px; color:var(--c-text-muted); background:var(--c-page-bg);" />
+                <button class="btn btn-ghost btn-sm" onclick="copyLink('link-{{ mod.module }}-{{ field.key }}')" style="flex-shrink:0;">Copy</button>
+              </div>
+            {% elif field.type == 'text' %}
+              <input class="form-input" id="setting-{{ mod.module }}-{{ field.key }}"
+                     placeholder="{{ field.placeholder or '' }}"
+                     value="{{ mod.settings.get(field.key, '') }}" />
+            {% elif field.type == 'select' %}
+              <select class="form-input form-select" id="setting-{{ mod.module }}-{{ field.key }}">
+                {% for opt in field.options %}
+                <option value="{{ opt }}" {% if mod.settings.get(field.key) == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
+          {% endfor %}
+
+          {% set editable = mod.settings_schema | selectattr('type', 'ne', 'readonly_link') | list %}
+          {% if editable %}
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="saveSettings('{{ ws_id }}', '{{ mod.module }}', {{ mod.settings_schema | tojson }})">
+              Save
+            </button>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .toggle-switch { position:relative; display:inline-block; width:40px; height:22px; }
+  .toggle-switch input { opacity:0; width:0; height:0; }
+  .toggle-slider {
+    position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+    background:var(--c-card-border); border-radius:22px; transition:.2s;
+  }
+  .toggle-slider:before {
+    position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px;
+    background:#fff; border-radius:50%; transition:.2s;
+  }
+  input:checked + .toggle-slider { background:var(--c-accent, #7B5EA7); }
+  input:checked + .toggle-slider:before { transform:translateX(18px); }
+</style>
+
+<script>
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+
+  function toggleSettings(mod) {
+    const panel = document.getElementById(`settings-${mod}`);
+    const chevron = document.getElementById(`chevron-${mod}`);
+    const open = panel.style.display === 'none';
+    panel.style.display = open ? 'block' : 'none';
+    if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
+  }
+
+  async function toggleModule(wsId, mod, enabled) {
+    const r = await fetch(`/api/ws/${wsId}/modules/${mod}/toggle?enabled=${enabled}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      toast(enabled ? `${mod} enabled` : `${mod} disabled`);
+    } else {
+      toast(d.error || 'Failed', 'error');
+      document.getElementById(`toggle-${mod}`).checked = !enabled;
+    }
+  }
+
+  async function saveSettings(wsId, mod, schema) {
+    const settings = {};
+    for (const field of schema) {
+      if (field.type === 'readonly_link') continue;
+      const el = document.getElementById(`setting-${mod}-${field.key}`);
+      if (el) settings[field.key] = el.value;
+    }
+    const r = await fetch(`/api/ws/${wsId}/modules/${mod}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings }),
+    });
+    const d = await r.json();
+    toast(d.success ? 'Settings saved' : 'Failed', d.success ? 'success' : 'error');
+  }
+
+  function copyLink(inputId) {
+    const el = document.getElementById(inputId);
+    navigator.clipboard.writeText(el.value).then(() => toast('Copied to clipboard'));
+  }
+</script>
+{% endblock %}

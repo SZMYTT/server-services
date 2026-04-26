@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Content Calendar — {{ ws_meta[active_ws].name }} — PrismaOS{% endblock %}
+{% block page_title %}Content Calendar{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">{{ ws_meta[active_ws].name }} · Schedule & track posts</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="grid-4 mb-40">
+  {% set published = posts | selectattr('status','eq','published') | list | length %}
+  {% set scheduled = posts | selectattr('status','eq','scheduled') | list | length %}
+  {% set draft = posts | selectattr('status','eq','draft') | list | length %}
+  <div class="stat-card">
+    <span class="stat-label">Total Posts</span>
+    <div class="stat-number">{{ posts | length }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Published</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ published }}</div>
+    <div class="stat-trend">Live posts</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Scheduled</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ scheduled }}</div>
+    <div class="stat-trend">Upcoming</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Drafts</span>
+    <div class="stat-number">{{ draft }}</div>
+    <div class="stat-trend">In progress</div>
+  </div>
+</div>
+
+{% if show_analytics is defined and show_analytics %}
+<!-- Analytics row for food brand -->
+{% set total_likes = posts | sum(attribute='likes') %}
+{% set total_views = posts | sum(attribute='views') %}
+{% set total_comments = posts | sum(attribute='comments') %}
+{% set total_shares = posts | sum(attribute='shares') %}
+<div class="grid-4 mb-32">
+  <div class="stat-card">
+    <span class="stat-label">Total Likes</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ total_likes }}</div>
+    <div class="stat-trend">Published posts</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total Views</span>
+    <div class="stat-number">{{ total_views }}</div>
+    <div class="stat-trend">Published posts</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Comments</span>
+    <div class="stat-number">{{ total_comments }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Shares</span>
+    <div class="stat-number">{{ total_shares }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+</div>
+<!-- Engagement chart (top 10 posts by views) -->
+{% set published_posts = posts | selectattr('status','eq','published') | list %}
+{% if published_posts %}
+<div class="card mb-32" style="padding:24px;">
+  <h2 class="card-title mb-16">Top Posts — Engagement</h2>
+  <div style="position:relative; height:220px;">
+    <canvas id="engagementChart"></canvas>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">All Content</h2>
+  <button class="btn btn-secondary" onclick="openModal('addPostModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    New Post
+  </button>
+</div>
+
+<!-- Platform filters -->
+<div class="flex gap-8 mb-16" id="platform-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterPlatform('all')">All Platforms</button>
+  {% for platform in platforms %}
+  <button class="btn btn-sm btn-ghost" onclick="filterPlatform('{{ platform }}')">{{ platform | title }}</button>
+  {% endfor %}
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if posts %}
+  <table class="data-table" id="content-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Platform</th>
+        <th>Publish Date</th>
+        <th>Status</th>
+        {% if show_analytics is defined and show_analytics %}<th>Engagement</th>{% endif %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in posts %}
+      <tr data-platform="{{ p.platform }}">
+        <td>
+          <div class="td-primary">{{ p.title }}</div>
+          {% if p.caption %}<div style="font-size:12px; color:var(--c-text-muted); margin-top:2px; max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.caption[:100] }}</div>{% endif %}
+        </td>
+        <td><span class="badge badge-platform-{{ p.platform }}">{{ p.platform | title }}</span></td>
+        <td class="td-mono">{{ p.publish_date.strftime('%d %b %Y') if p.publish_date else '—' }}</td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:120px;" onchange="updatePostStatus('{{ p.id }}', this.value)">
+            {% for s in ['draft','scheduled','published','archived'] %}
+            <option value="{{ s }}" {% if s == p.status %}selected{% endif %}>{{ s | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        {% if show_analytics is defined and show_analytics %}
+        <td>
+          <div style="font-size:12px; color:var(--c-text-muted);">
+            {% if p.status == 'published' %}
+            ❤️ {{ p.likes }} · 👁 {{ p.views }} · 💬 {{ p.comments }}
+            {% else %}—{% endif %}
+          </div>
+        </td>
+        {% endif %}
+        <td>
+          {% if p.post_url %}<a href="{{ p.post_url }}" target="_blank" class="btn btn-xs btn-ghost">View</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+    <h3>No content yet</h3>
+    <p>Start planning your content calendar.</p>
+    <button class="btn btn-secondary" onclick="openModal('addPostModal')">New Post</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Post Modal -->
+<div class="modal-backdrop" id="addPostModal" style="display:none;" onclick="closeModal('addPostModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Post</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:16px;">
+        <div>
+          <label class="form-label">Title *</label>
+          <input class="form-input" id="p-title" placeholder="Post title" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Platform *</label>
+            <select class="form-input form-select" id="p-platform">
+              {% for platform in platforms %}
+              <option value="{{ platform }}">{{ platform | title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Status</label>
+            <select class="form-input form-select" id="p-status">
+              <option value="draft">Draft</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Publish Date</label>
+          <input class="form-input" id="p-date" type="date" />
+        </div>
+        <div>
+          <label class="form-label">Caption / Notes</label>
+          <textarea class="form-input form-textarea" id="p-caption" rows="3" placeholder="Post caption or content notes..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addPostModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitPost()">Add Post</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-platform-instagram { background:rgba(131,58,180,.12); color:#7B2D8B; }
+  .badge-platform-tiktok    { background:rgba(0,0,0,.08); color:#1A1A1A; }
+  .badge-platform-facebook  { background:rgba(24,119,242,.12); color:#1252A0; }
+  .badge-platform-youtube   { background:rgba(255,0,0,.1); color:#CC0000; }
+  .badge-platform-pinterest { background:rgba(189,8,28,.12); color:#BD081C; }
+  .badge-platform-etsy      { background:rgba(240,115,49,.12); color:#C45E1A; }
+  .badge-platform-blog      { background:rgba(78,111,87,.12); color:var(--c-active-dark); }
+</style>
+<script>
+  const CONTENT_TABLE = "{{ content_table }}";
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterPlatform(platform) {
+    document.querySelectorAll('#platform-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#content-table tbody tr').forEach(row => {
+      row.style.display = (platform === 'all' || row.dataset.platform === platform) ? '' : 'none';
+    });
+  }
+  async function updatePostStatus(id, status) {
+    const r = await fetch(`/api/erp/content/${CONTENT_TABLE}/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitPost() {
+    const p = {
+      table: CONTENT_TABLE,
+      platform: document.getElementById('p-platform').value,
+      title: document.getElementById('p-title').value,
+      caption: document.getElementById('p-caption').value,
+      publish_date: document.getElementById('p-date').value || null,
+      status: document.getElementById('p-status').value,
+    };
+    if (!p.title) { toast('Title required', 'error'); return; }
+    const r = await fetch('/api/erp/content', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Post added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+
+  // ── Engagement Chart (food_brand only) ───────────────────────
+  {% if show_analytics is defined and show_analytics %}
+  (() => {
+    const el = document.getElementById('engagementChart');
+    if (!el) return;
+    const posts = [
+      {% for p in posts | selectattr('status','eq','published') | list | sort(attribute='views', reverse=True) %}
+      {% if loop.index <= 10 %}
+      { title: {{ p.title | tojson }}, views: {{ p.views | int }}, likes: {{ p.likes | int }}, comments: {{ p.comments | int }} },
+      {% endif %}
+      {% endfor %}
+    ].reverse(); // chronological for left-to-right reading
+    const labels = posts.map(p => p.title.length > 20 ? p.title.slice(0,20)+'…' : p.title);
+    const ctx = el.getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Views',    data: posts.map(p => p.views),    backgroundColor: 'rgba(191,168,128,0.55)', borderColor: 'rgba(191,168,128,1)', borderWidth:1, borderRadius:4 },
+          { label: 'Likes',    data: posts.map(p => p.likes),    backgroundColor: 'rgba(58,107,74,0.75)',   borderColor: 'rgba(58,107,74,1)',   borderWidth:1, borderRadius:4 },
+          { label: 'Comments', data: posts.map(p => p.comments), backgroundColor: 'rgba(42,91,107,0.65)',  borderColor: 'rgba(42,91,107,1)',   borderWidth:1, borderRadius:4 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#C8BCA8', font: { family: 'DM Sans', size: 12 } } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('en-GB')}` } },
+        },
+        scales: {
+          x: { ticks: { color: '#A09880', font: { family: 'DM Sans', size: 10 }, maxRotation: 30 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { ticks: { color: '#A09880', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        },
+      },
+    });
+  })();
+  {% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}Bookings — Nursing — PrismaOS{% endblock %}
+{% block page_title %}Bookings{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Nursing · Client appointments & revenue tracking</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Upcoming</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ stats.upcoming }}</div>
+    <div class="stat-trend">Confirmed bookings</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Done This Week</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ stats.done_week }}</div>
+    <div class="stat-trend">Completed sessions</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Revenue This Month</span>
+    <div class="stat-number" style="color:var(--c-success)">£{{ "%.0f"|format(stats.revenue_month|float) }}</div>
+    <div class="stat-trend">Completed sessions only</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total Clients</span>
+    <div class="stat-number">{{ stats.total_clients }}</div>
+    <div class="stat-trend">Unique clients</div>
+  </div>
+</div>
+
+<!-- Upcoming bookings -->
+{% if upcoming %}
+<h2 class="card-title mb-16">Upcoming</h2>
+<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:40px;">
+  {% for b in upcoming %}
+  <div class="card" style="padding:16px;">
+    <div class="flex items-center justify-between">
+      <div class="flex gap-16 items-center">
+        <div style="text-align:center; min-width:48px;">
+          <div style="font-size:22px; font-weight:700; color:var(--c-text-primary); line-height:1;">{{ b.booking_date.strftime('%d') if b.booking_date else '—' }}</div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">{{ b.booking_date.strftime('%b') if b.booking_date else '' }}</div>
+        </div>
+        <div style="width:1px; height:32px; background:var(--c-card-border);"></div>
+        <div>
+          <div class="td-primary">{{ b.client_name or 'Client' }}</div>
+          <div style="font-size:13px; color:var(--c-text-muted);">{{ b.service_name or '—' }} · {{ b.booking_time.strftime('%H:%M') if b.booking_time else '' }} · {{ b.duration_mins }} min</div>
+        </div>
+      </div>
+      <div class="flex gap-8 items-center">
+        <div style="font-weight:600; color:var(--c-success);">£{{ "%.2f"|format(b.amount|float) }}</div>
+        <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:130px;" onchange="updateBooking('{{ b.id }}', this.value)">
+          {% for s in ['pending','confirmed','completed','cancelled','no_show'] %}
+          <option value="{{ s }}" {% if s == b.status %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- All Bookings table -->
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">All Bookings</h2>
+  <div class="flex gap-8">
+    <button class="btn btn-ghost btn-sm" onclick="openModal('addClientModal')">+ New Client</button>
+    <button class="btn btn-secondary" onclick="openModal('addBookingModal')">+ New Booking</button>
+  </div>
+</div>
+
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterStatus('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('pending')" style="border-color:#C4A020; color:#7A6010;">Pending</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('confirmed')">Confirmed</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('completed')">Completed</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('cancelled')">Cancelled</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if bookings %}
+  <table class="data-table" id="bookings-table">
+    <thead>
+      <tr>
+        <th>Date & Time</th>
+        <th>Client</th>
+        <th>Service</th>
+        <th>Amount</th>
+        <th>Payment</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in bookings %}
+      <tr data-status="{{ b.status }}" {% if b.status == 'pending' %}style="background:rgba(196,160,32,.07);"{% endif %}>
+        <td>
+          <div class="td-primary">{{ b.booking_date.strftime('%d %b %Y') if b.booking_date else '—' }}</div>
+          <div class="td-mono">{{ b.booking_time.strftime('%H:%M') if b.booking_time else '' }}</div>
+        </td>
+        <td class="td-primary">{{ b.client_name or '—' }}</td>
+        <td>
+          <div>{{ b.service_name or '—' }}</div>
+          <div style="font-size:12px; color:var(--c-text-muted);">{{ b.duration_mins }} min</div>
+        </td>
+        <td class="td-primary">£{{ "%.2f"|format(b.amount|float) }}</td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:100px;" onchange="updateBookingPayment('{{ b.id }}', this.value)">
+            {% for ps in ['unpaid','paid','refunded'] %}
+            <option value="{{ ps }}" {% if ps == b.payment_status %}selected{% endif %}>{{ ps | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:130px;" onchange="updateBooking('{{ b.id }}', this.value)">
+            {% for s in ['pending','confirmed','completed','cancelled','no_show'] %}
+            <option value="{{ s }}" {% if s == b.status %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          {% if b.notes %}<span title="{{ b.notes }}" style="cursor:help; color:var(--c-text-muted);">📝</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+    <h3>No bookings yet</h3>
+    <p>Add your first client and booking to get started.</p>
+    <button class="btn btn-secondary" onclick="openModal('addBookingModal')">New Booking</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Booking Modal -->
+<div class="modal-backdrop" id="addBookingModal" style="display:none;" onclick="closeModal('addBookingModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Booking</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Client *</label>
+            <select class="form-input form-select" id="b-client" onchange="fillClientName(this)">
+              <option value="">— Select client —</option>
+              {% for c in clients %}
+              <option value="{{ c.id }}" data-name="{{ c.name }}">{{ c.name }}</option>
+              {% endfor %}
+              <option value="__new__">+ New (type below)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Client Name (if new)</label>
+            <input class="form-input" id="b-client-name" placeholder="Full name" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Service *</label>
+          <select class="form-input form-select" id="b-service" onchange="fillService(this)">
+            <option value="">— Select service —</option>
+            {% for s in services %}
+            <option value="{{ s.id }}" data-name="{{ s.name }}" data-price="{{ s.price }}" data-duration="{{ s.duration_mins }}">{{ s.name }} — £{{ "%.2f"|format(s.price|float) }} ({{ s.duration_mins }}min)</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Date *</label>
+            <input class="form-input" id="b-date" type="date" />
+          </div>
+          <div>
+            <label class="form-label">Time *</label>
+            <input class="form-input" id="b-time" type="time" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Duration (min)</label>
+            <input class="form-input" id="b-duration" type="number" value="60" />
+          </div>
+          <div>
+            <label class="form-label">Amount (£)</label>
+            <input class="form-input" id="b-amount" type="number" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="b-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addBookingModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitBooking()">Book</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Client Modal -->
+<div class="modal-backdrop" id="addClientModal" style="display:none;" onclick="closeModal('addClientModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Client</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Full Name *</label>
+          <input class="form-input" id="c-name" placeholder="Jane Smith" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Phone</label>
+            <input class="form-input" id="c-phone" placeholder="+44 7..." type="tel" />
+          </div>
+          <div>
+            <label class="form-label">Email</label>
+            <input class="form-input" id="c-email" placeholder="jane@..." type="email" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Address</label>
+          <input class="form-input" id="c-address" placeholder="Home address" />
+        </div>
+        <div>
+          <label class="form-label">Medical Notes</label>
+          <textarea class="form-input form-textarea" id="c-medical" rows="2" placeholder="Allergies, conditions, preferences..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addClientModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitClient()">Add Client</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStatus(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#bookings-table tbody tr').forEach(row => {
+      row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+    });
+  }
+  function fillService(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    if (opt.dataset.price) document.getElementById('b-amount').value = opt.dataset.price;
+    if (opt.dataset.duration) document.getElementById('b-duration').value = opt.dataset.duration;
+    document.getElementById('b-service-name').value = opt.dataset.name || '';
+  }
+  function fillClientName(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    if (opt.dataset.name) document.getElementById('b-client-name').value = opt.dataset.name;
+  }
+  async function updateBooking(id, status) {
+    const r = await fetch(`/api/erp/nursing/bookings/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function updateBookingPayment(id, payment_status) {
+    const r = await fetch(`/api/erp/nursing/bookings/${id}?status=confirmed&payment_status=${payment_status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Payment updated'); else toast('Failed', 'error');
+  }
+  async function submitBooking() {
+    const clientSel = document.getElementById('b-client');
+    const clientOpt = clientSel.options[clientSel.selectedIndex];
+    const serviceSel = document.getElementById('b-service');
+    const serviceOpt = serviceSel.options[serviceSel.selectedIndex];
+    const p = {
+      client_id: (clientSel.value && clientSel.value !== '__new__') ? clientSel.value : null,
+      client_name: document.getElementById('b-client-name').value || clientOpt.dataset.name || '',
+      service_id: serviceSel.value || null,
+      service_name: serviceOpt.dataset.name || '',
+      booking_date: document.getElementById('b-date').value,
+      booking_time: document.getElementById('b-time').value,
+      duration_mins: parseInt(document.getElementById('b-duration').value) || 60,
+      amount: parseFloat(document.getElementById('b-amount').value) || 0,
+      notes: document.getElementById('b-notes').value,
+    };
+    if (!p.booking_date || !p.booking_time) { toast('Date and time required', 'error'); return; }
+    if (!p.client_name) { toast('Client required', 'error'); return; }
+    const r = await fetch('/api/erp/nursing/bookings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Booked'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+  async function submitClient() {
+    const p = {
+      name: document.getElementById('c-name').value,
+      phone: document.getElementById('c-phone').value,
+      email: document.getElementById('c-email').value,
+      address: document.getElementById('c-address').value,
+      medical_notes: document.getElementById('c-medical').value,
+    };
+    if (!p.name) { toast('Name required', 'error'); return; }
+    const r = await fetch('/api/erp/nursing/clients', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Client added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+<!-- hidden field for service name -->
+<input type="hidden" id="b-service-name" />
+{% endblock %}

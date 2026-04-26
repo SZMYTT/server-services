@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Deal Pipeline — Property — PrismaOS{% endblock %}
+{% block page_title %}Deal Pipeline{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Property · Active deals from prospect to completion</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Deals</span>
+    <div class="stat-number">{{ stats.total }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Active</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ stats.active }}</div>
+    <div class="stat-trend">In pipeline</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Completed</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ stats.completed }}</div>
+    <div class="stat-trend">Closed deals</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Realised Profit</span>
+    <div class="stat-number" style="color:{% if stats.realised_profit|float >= 0 %}var(--c-success){% else %}var(--c-error){% endif %}">
+      £{{ "{:,.0f}".format(stats.realised_profit|float) }}
+    </div>
+    <div class="stat-trend">From completed deals</div>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Pipeline</h2>
+  <div class="flex gap-8">
+    <a href="/property/research" class="btn btn-ghost btn-sm">View Watchlist</a>
+    <button class="btn btn-secondary" onclick="openModal('addDealModal')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add Deal
+    </button>
+  </div>
+</div>
+
+<!-- Pipeline stage filters -->
+<div class="flex gap-8 mb-24" id="stage-filters" style="flex-wrap:wrap;">
+  <button class="btn btn-sm btn-secondary" onclick="filterStage('all')">All</button>
+  {% for stage in pipeline_order %}
+  <button class="btn btn-sm btn-ghost" onclick="filterStage('{{ stage }}')">{{ stage | replace('_',' ') | title }}</button>
+  {% endfor %}
+</div>
+
+<!-- Pipeline cards -->
+{% if deals %}
+<div style="display:flex; flex-direction:column; gap:12px;" id="deals-container">
+  {% for deal in deals %}
+  {% if deal.status != 'lost' %}
+  <div class="card deal-card" data-stage="{{ deal.status }}" style="padding:0; overflow:hidden; border-left:4px solid {{ {'prospect':'#BFA880','offer_made':'#2A5B6B','under_offer':'#9B7A2A','due_diligence':'#4E6F57','exchanged':'#3A6B4A','completed':'#162920','lost':'#8B3A2A'}.get(deal.status,'#E2D9C4') }};">
+    <div style="padding:20px;">
+      <div class="flex items-center justify-between mb-8">
+        <div class="flex gap-8 items-center">
+          <span class="badge badge-deal-{{ deal.status }}">{{ deal.status | replace('_',' ') | title }}</span>
+          <span class="badge badge-internal">{{ deal.deal_type | title }}</span>
+        </div>
+        <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:160px;" onchange="updateDeal('{{ deal.id }}', this.value)">
+          {% for s in pipeline_order %}
+          <option value="{{ s }}" {% if s == deal.status %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="td-primary" style="font-size:16px; margin-bottom:4px;">{{ deal.address }}</div>
+      {% if deal.postcode %}<div class="td-mono" style="font-size:12px; margin-bottom:12px;">{{ deal.postcode }}</div>{% endif %}
+      <div class="flex gap-24" style="flex-wrap:wrap;">
+        {% if deal.asking_price %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Asking</div>
+          <div class="td-primary">£{{ "{:,.0f}".format(deal.asking_price|float) }}</div>
+        </div>
+        {% endif %}
+        {% if deal.offer_price %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Offer</div>
+          <div class="td-primary">£{{ "{:,.0f}".format(deal.offer_price|float) }}</div>
+        </div>
+        {% endif %}
+        {% if deal.estimated_costs and deal.estimated_costs|float > 0 %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Est. Costs</div>
+          <div class="td-primary">£{{ "{:,.0f}".format(deal.estimated_costs|float) }}</div>
+        </div>
+        {% endif %}
+        {% if deal.estimated_value %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Est. Value</div>
+          <div style="font-weight:600; color:var(--c-success);">£{{ "{:,.0f}".format(deal.estimated_value|float) }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if deal.notes %}
+      <div style="margin-top:12px; font-size:13px; color:var(--c-text-muted); border-top:1px solid var(--c-card-border); padding-top:12px;">{{ deal.notes }}</div>
+      {% endif %}
+      <div style="margin-top:8px; font-size:11px; color:var(--c-text-muted);">
+        {% if deal.agent %}Agent: {{ deal.agent }} · {% endif %}
+        Added {{ deal.created_at.strftime('%d %b %Y') if deal.created_at else '' }}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  <!-- Lost deals collapsed section -->
+  {% set lost = deals | selectattr('status', 'eq', 'lost') | list %}
+  {% if lost %}
+  <div style="margin-top:8px;">
+    <button class="btn btn-ghost btn-sm" onclick="toggleLost()">Show {{ lost|length }} lost deal{{ 's' if lost|length > 1 }}</button>
+    <div id="lost-deals" style="display:none; margin-top:12px; display:flex; flex-direction:column; gap:12px;">
+      {% for deal in lost %}
+      <div class="card deal-card" data-stage="lost" style="padding:16px; opacity:.6; border-left:4px solid var(--c-error);">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="td-primary">{{ deal.address }}</div>
+            {% if deal.asking_price %}<div style="font-size:13px; color:var(--c-text-muted);">£{{ "{:,.0f}".format(deal.asking_price|float) }}</div>{% endif %}
+          </div>
+          <span class="badge badge-financial">Lost</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+    <h3>No deals in pipeline</h3>
+    <p>Add your first deal or promote one from the watchlist.</p>
+    <button class="btn btn-secondary" onclick="openModal('addDealModal')">Add Deal</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Add Deal Modal -->
+<div class="modal-backdrop" id="addDealModal" style="display:none;" onclick="closeModal('addDealModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Deal</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Address *</label>
+          <input class="form-input" id="d-address" placeholder="Full property address" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Postcode</label>
+            <input class="form-input" id="d-postcode" placeholder="e.g. M1 1AA" />
+          </div>
+          <div>
+            <label class="form-label">Deal Type</label>
+            <select class="form-input form-select" id="d-type">
+              <option value="buy">Buy to Live</option>
+              <option value="flip">Flip</option>
+              <option value="rental">Buy to Let</option>
+              <option value="commercial">Commercial</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Asking Price (£)</label>
+            <input class="form-input" id="d-asking" type="number" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Our Offer (£)</label>
+            <input class="form-input" id="d-offer" type="number" placeholder="0" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Est. Costs (£)</label>
+            <input class="form-input" id="d-costs" type="number" placeholder="Refurb, legal, stamp duty..." />
+          </div>
+          <div>
+            <label class="form-label">Est. End Value (£)</label>
+            <input class="form-input" id="d-value" type="number" placeholder="0" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Agent</label>
+          <input class="form-input" id="d-agent" placeholder="Estate agent name" />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="d-notes" rows="2" placeholder="Condition, strategy, why it's interesting..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addDealModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitDeal()">Add Deal</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-deal-prospect      { background: rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-deal-offer_made    { background: rgba(42,91,107,.12); color:var(--c-info); }
+  .badge-deal-under_offer   { background: rgba(155,122,42,.15); color:var(--c-warning); }
+  .badge-deal-due_diligence { background: rgba(78,111,87,.15); color:var(--c-active-dark); }
+  .badge-deal-exchanged     { background: rgba(58,107,74,.15); color:var(--c-success); }
+  .badge-deal-completed     { background: var(--c-sidebar); color:var(--c-text-on-dark-m); }
+  .badge-deal-lost          { background: rgba(139,58,42,.12); color:var(--c-error); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStage(stage) {
+    document.querySelectorAll('#stage-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('.deal-card').forEach(card => {
+      card.style.display = (stage === 'all' || card.dataset.stage === stage) ? '' : 'none';
+    });
+  }
+  function toggleLost() {
+    const el = document.getElementById('lost-deals');
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    el.style.flexDirection = 'column';
+  }
+  async function updateDeal(id, status) {
+    const r = await fetch(`/api/erp/property/deals/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitDeal() {
+    const p = {
+      address: document.getElementById('d-address').value,
+      postcode: document.getElementById('d-postcode').value,
+      deal_type: document.getElementById('d-type').value,
+      asking_price: parseFloat(document.getElementById('d-asking').value) || null,
+      offer_price: parseFloat(document.getElementById('d-offer').value) || null,
+      estimated_costs: parseFloat(document.getElementById('d-costs').value) || 0,
+      estimated_value: parseFloat(document.getElementById('d-value').value) || null,
+      agent: document.getElementById('d-agent').value,
+      notes: document.getElementById('d-notes').value,
+    };
+    if (!p.address) { toast('Address required', 'error'); return; }
+    const r = await fetch('/api/erp/property/deals', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Deal added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Documents — Cars — PrismaOS{% endblock %}
+{% block page_title %}Documents{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Cars · V5C, MOT, service history & receipts</p>{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-24">
+  <div></div>
+  <button class="btn btn-secondary" onclick="openModal('addDocModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add Document
+  </button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if documents %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Document</th>
+        <th>Vehicle</th>
+        <th>Type</th>
+        <th>Notes</th>
+        <th>Added</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr>
+        <td>
+          <div class="td-primary">{{ doc.description or doc.doc_type | replace('_', ' ') | title }}</div>
+        </td>
+        <td>
+          {% if doc.make %}
+          <div class="td-primary">{{ doc.year or '' }} {{ doc.make }} {{ doc.model }}</div>
+          {% else %}
+          <span style="color:var(--c-text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td><span class="badge badge-doctype-{{ doc.doc_type }}">{{ doc.doc_type | replace('_',' ') | title }}</span></td>
+        <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--c-text-muted); font-size:12px;">{{ doc.notes or '—' }}</td>
+        <td class="td-mono">{{ doc.created_at.strftime('%d %b %Y') if doc.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+    <h3>No documents</h3>
+    <p>Track V5C, MOT certificates, service history and purchase receipts.</p>
+    <button class="btn btn-secondary" onclick="openModal('addDocModal')">Add Document</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Document Modal -->
+<div class="modal-backdrop" id="addDocModal" style="display:none;" onclick="closeModal('addDocModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Document</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Document Type *</label>
+          <select class="form-input form-select" id="doc-type">
+            <option value="v5c">V5C (Logbook)</option>
+            <option value="mot">MOT Certificate</option>
+            <option value="service_history">Service History</option>
+            <option value="receipt">Purchase Receipt</option>
+            <option value="insurance">Insurance</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Vehicle</label>
+          <select class="form-input form-select" id="doc-vehicle">
+            <option value="">— No vehicle —</option>
+            {% for v in vehicles %}
+            <option value="{{ v.id }}">{{ v.year or '' }} {{ v.make }} {{ v.model }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Description</label>
+          <input class="form-input" id="doc-desc" placeholder="e.g. Full dealer service history" />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="doc-notes" rows="2" placeholder="Any relevant notes..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addDocModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitDoc()">Add Document</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-doctype-v5c            { background:rgba(42,91,107,.12); color:var(--c-info); }
+  .badge-doctype-mot            { background:rgba(58,107,74,.12); color:var(--c-success); }
+  .badge-doctype-service_history { background:rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-doctype-receipt        { background:var(--c-card-border); color:var(--c-text-muted); }
+  .badge-doctype-insurance      { background:rgba(78,111,87,.12); color:var(--c-active-dark); }
+  .badge-doctype-other          { background:var(--c-input-bg); color:var(--c-text-secondary); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  async function submitDoc() {
+    const vehicleId = document.getElementById('doc-vehicle').value;
+    const payload = {
+      doc_type: document.getElementById('doc-type').value,
+      vehicle_id: vehicleId || null,
+      description: document.getElementById('doc-desc').value,
+      notes: document.getElementById('doc-notes').value,
+    };
+    const r = await fetch('/api/erp/cars/documents', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (!r.ok) { toast('Failed', 'error'); return; }
+    const d = await r.json();
+    if (d && d.success) { toast('Document added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

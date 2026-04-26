@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}SOPs — PrismaOS{% endblock %}
+{% block page_title %}SOPs{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">System Operating Procedures — the prompt layers that govern agent behaviour.</p>{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info mb-24">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01"/></svg>
+  <div>SOPs are markdown files served from <code style="font-family:'JetBrains Mono',monospace; font-size:12px; background:var(--c-card-border); padding:2px 6px; border-radius:3px;">sops/</code>. Edit them directly on the server to update agent instructions.</div>
+</div>
+
+{% if sops %}
+<div class="card" style="padding:0; overflow:hidden;">
+  <table class="data-table">
+    <thead>
+      <tr><th>SOP File</th><th>Path</th></tr>
+    </thead>
+    <tbody>
+      {% for sop in sops %}
+      <tr>
+        <td class="td-primary">{{ sop.name }}</td>
+        <td class="td-mono">{{ sop.path }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+    <h3>No SOP files found</h3>
+    <p>Add markdown files to the <code>sops/</code> directory to see them here.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

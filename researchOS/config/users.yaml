@@ -1,0 +1,6 @@
+# researchOS users
+# Run: python3 scripts/create_user.py daniel  to set a password
+users:
+  daniel:
+    role: admin
+    display_name: Daniel

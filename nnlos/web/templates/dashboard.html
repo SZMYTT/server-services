@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Data Sync — NNLOS{% endblock %}
+{% block header_breadcrumb %}<span>Data Sync Dashboard</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="breadcrumb">NNLOS</div>
+  <h1 class="page-title">Data Sync Dashboard</h1>
+  <p class="page-subtitle">NNL procurement & inventory intelligence</p>
+</div>
+
+<!-- Sync summary stats -->
+<div class="stat-row" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-label">System Status</div>
+    <div class="stat-number" style="color:var(--c-success);">Operational</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Last full sync</div>
+    <div class="stat-number" style="font-size:14px; font-family:'JetBrains Mono', monospace; padding-top:4px;">Today</div>
+  </div>
+</div>
+
+<!-- Table panel -->
+<div class="engine-card">
+  <div class="engine-card-header" style="justify-content:space-between;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="status-live"></div>
+      <span class="engine-card-title">Sync Sources</span>
+    </div>
+    <form method="POST" action="/api/sync" style="margin:0;">
+      <button type="submit" class="btn btn-gold btn-sm">▶ Run full sync</button>
+    </form>
+  </div>
+  
+  <div style="overflow-x:auto;">
+    <table style="width:100%; text-align:left; border-collapse:collapse; font-size:13px; font-family:'JetBrains Mono', monospace;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--c-card-border); color:var(--c-text-muted);">
+          <th style="padding:12px 16px; font-weight:500;">Data Type</th>
+          <th style="padding:12px 16px; font-weight:500;">Status</th>
+          <th style="padding:12px 16px; font-weight:500;">Rows Processed</th>
+          <th style="padding:12px 16px; font-weight:500;">Last Sync</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr style="border-bottom:1px solid var(--c-card-border);">
+          <td style="padding:12px 16px; color:var(--c-text-main);">{{ r.type }}</td>
+          <td style="padding:12px 16px;">
+            {% if r.status == 'success' %}<span class="badge badge-done">success</span>
+            {% elif r.status == 'failed' %}<span class="badge badge-error">failed</span>
+            {% elif r.status == 'running' %}<span class="badge badge-running">running</span>
+            {% else %}<span class="badge">{{ r.status }}</span>{% endif %}
+          </td>
+          <td style="padding:12px 16px; color:var(--c-text-muted);">{{ r.rows or 0 }}</td>
+          <td style="padding:12px 16px; color:var(--c-text-muted);">{{ r.started[:16] }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="padding:16px; text-align:center; color:var(--c-text-muted);">No syncs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

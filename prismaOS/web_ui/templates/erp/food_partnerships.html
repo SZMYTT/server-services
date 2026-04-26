@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Partnerships — Food Brand — PrismaOS{% endblock %}
+{% block page_title %}Brand Partnerships{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Food Brand · Sponsorships, collabs &amp; brand deals</p>{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+{% set active_deals = partnerships | selectattr('status','eq','active') | list %}
+{% set pipeline = partnerships | selectattr('status','in',['prospect','negotiating']) | list %}
+{% set total_value = partnerships | selectattr('status','in',['active','completed']) | sum(attribute='deal_value') %}
+<div class="grid-4 mb-40">
+  <div class="stat-card">
+    <span class="stat-label">Total Deals</span>
+    <div class="stat-number">{{ partnerships | length }}</div>
+    <div class="stat-trend">All time</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Active</span>
+    <div class="stat-number" style="color:var(--c-success)">{{ active_deals | length }}</div>
+    <div class="stat-trend">Live partnerships</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">In Pipeline</span>
+    <div class="stat-number" style="color:var(--c-gold-dark)">{{ pipeline | length }}</div>
+    <div class="stat-trend">Prospect + negotiating</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Earned Value</span>
+    <div class="stat-number" style="color:var(--c-success)">£{{ "%.0f"|format(total_value|float) }}</div>
+    <div class="stat-trend">Active + completed deals</div>
+  </div>
+</div>
+
+<div class="flex items-center justify-between mb-16">
+  <h2 class="card-title">Partnerships</h2>
+  <button class="btn btn-secondary" onclick="openModal('addPartnerModal')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    New Deal
+  </button>
+</div>
+
+<div class="flex gap-8 mb-16" id="status-filters">
+  <button class="btn btn-sm btn-secondary" onclick="filterStatus('all')">All</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('prospect')">Prospect</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('negotiating')">Negotiating</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('active')">Active</button>
+  <button class="btn btn-sm btn-ghost" onclick="filterStatus('completed')">Completed</button>
+</div>
+
+{% if partnerships %}
+<div style="display:flex; flex-direction:column; gap:12px;" id="partnerships-list">
+  {% for p in partnerships %}
+  <div class="card" data-status="{{ p.status }}" style="padding:0; overflow:hidden; border-left:4px solid {{ {'prospect':'#BFA880','negotiating':'#2A5B6B','active':'#3A6B4A','completed':'#162920','declined':'#8B3A2A'}.get(p.status,'#E2D9C4') }};">
+    <div style="padding:20px;">
+      <div class="flex items-center justify-between mb-12">
+        <div class="flex gap-8 items-center">
+          <div class="td-primary" style="font-size:17px;">{{ p.brand }}</div>
+          <span class="badge badge-partner-{{ p.status }}">{{ p.status | title }}</span>
+        </div>
+        <div class="flex gap-8 items-center">
+          {% if p.deal_value %}<div style="font-weight:700; color:var(--c-success); font-size:16px;">£{{ "{:,.0f}".format(p.deal_value|float) }}</div>{% endif %}
+          <select class="form-input" style="height:28px; font-size:12px; padding:0 8px; width:130px;" onchange="updatePartnership('{{ p.id }}', this.value)">
+            {% for s in ['prospect','negotiating','active','completed','declined'] %}
+            <option value="{{ s }}" {% if s == p.status %}selected{% endif %}>{{ s | title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="flex gap-24" style="flex-wrap:wrap;">
+        {% if p.contact_name %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Contact</div>
+          <div style="font-size:13px; color:var(--c-text-secondary);">{{ p.contact_name }}</div>
+          {% if p.contact_email %}<div class="td-mono">{{ p.contact_email }}</div>{% endif %}
+        </div>
+        {% endif %}
+        {% if p.due_date %}
+        <div>
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Due</div>
+          <div style="font-size:13px; color:var(--c-text-secondary);">{{ p.due_date.strftime('%d %b %Y') }}</div>
+        </div>
+        {% endif %}
+        {% if p.deliverables %}
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:11px; color:var(--c-text-muted); text-transform:uppercase; letter-spacing:.5px;">Deliverables</div>
+          <div style="font-size:13px; color:var(--c-text-secondary);">{{ p.deliverables }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if p.notes %}
+      <div style="margin-top:12px; font-size:13px; color:var(--c-text-muted); border-top:1px solid var(--c-card-border); padding-top:12px;">{{ p.notes }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    <h3>No brand deals yet</h3>
+    <p>Track partnerships, sponsorships and collaboration opportunities.</p>
+    <button class="btn btn-secondary" onclick="openModal('addPartnerModal')">New Deal</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Add Partnership Modal -->
+<div class="modal-backdrop" id="addPartnerModal" style="display:none;" onclick="closeModal('addPartnerModal', event)">
+  <div class="modal">
+    <div class="modal-header"><h3>New Partnership</h3></div>
+    <div class="modal-body">
+      <div style="display:grid; gap:14px;">
+        <div>
+          <label class="form-label">Brand *</label>
+          <input class="form-input" id="p-brand" placeholder="e.g. Innocent Drinks" />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Contact Name</label>
+            <input class="form-input" id="p-contact" placeholder="Marketing manager" />
+          </div>
+          <div>
+            <label class="form-label">Contact Email</label>
+            <input class="form-input" id="p-email" type="email" placeholder="brand@..." />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">Deal Value (£)</label>
+            <input class="form-input" id="p-value" type="number" placeholder="0" />
+          </div>
+          <div>
+            <label class="form-label">Due Date</label>
+            <input class="form-input" id="p-due" type="date" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Deliverables</label>
+          <textarea class="form-input form-textarea" id="p-deliverables" rows="2" placeholder="e.g. 2x Instagram posts, 1x TikTok, story mentions..." />
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input form-textarea" id="p-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addPartnerModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitPartnership()">Add Deal</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="alert alert-success" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; min-width:220px;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .badge-partner-prospect    { background:rgba(191,168,128,.2); color:var(--c-gold-dark); }
+  .badge-partner-negotiating { background:rgba(42,91,107,.12); color:var(--c-info); }
+  .badge-partner-active      { background:rgba(58,107,74,.12); color:var(--c-success); }
+  .badge-partner-completed   { background:var(--c-sidebar); color:var(--c-text-on-dark-m); }
+  .badge-partner-declined    { background:rgba(139,58,42,.12); color:var(--c-error); }
+</style>
+<script>
+  function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id, e) {
+    if (!e || e.target.id === id) document.getElementById(id).style.display = 'none';
+  }
+  function toast(msg, type='success') {
+    const t = document.getElementById('toast');
+    t.className = `alert alert-${type}`;
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function filterStatus(status) {
+    document.querySelectorAll('#status-filters .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+    event.target.className = 'btn btn-sm btn-secondary';
+    document.querySelectorAll('#partnerships-list > div').forEach(card => {
+      card.style.display = (status === 'all' || card.dataset.status === status) ? '' : 'none';
+    });
+  }
+  async function updatePartnership(id, status) {
+    const r = await fetch(`/api/erp/food/partnerships/${id}?status=${status}`, {method:'PATCH'});
+    const d = await r.json();
+    if (d.success) toast('Updated'); else toast('Failed', 'error');
+  }
+  async function submitPartnership() {
+    const p = {
+      brand: document.getElementById('p-brand').value,
+      contact_name: document.getElementById('p-contact').value,
+      contact_email: document.getElementById('p-email').value,
+      deal_value: parseFloat(document.getElementById('p-value').value) || null,
+      deliverables: document.getElementById('p-deliverables').value,
+      due_date: document.getElementById('p-due').value || null,
+      notes: document.getElementById('p-notes').value,
+    };
+    if (!p.brand) { toast('Brand required', 'error'); return; }
+    const r = await fetch('/api/erp/food/partnerships', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json();
+    if (d.success) { toast('Deal added'); setTimeout(() => location.reload(), 800); }
+    else toast('Failed', 'error');
+  }
+</script>
+{% endblock %}

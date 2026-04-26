@@ -1,0 +1,604 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — ResearchOS{% endblock %}
+{% block header_breadcrumb %}
+  <a href="/library" style="color:var(--c-text-on-dark-m);">Library</a>
+  <span>/</span><span>{{ project.name }}</span>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="page-header">
+  <div class="breadcrumb">
+    <a href="/library">Library</a><span class="breadcrumb-sep">/</span><span>{{ project.name }}</span>
+  </div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h1 class="page-title">{{ project.icon }} {{ project.name }}</h1>
+      {% if project.description %}<p class="page-subtitle">{{ project.description }}</p>{% endif %}
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;">
+      {% if pending_count > 0 %}
+      <form method="POST" action="/p/{{ project.slug }}/run">
+        <button type="submit" class="btn btn-gold">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run {{ pending_count }} pending
+        </button>
+      </form>
+      {% endif %}
+      <button class="btn btn-primary" onclick="openModal('modal-new-topic')">+ Queue topic</button>
+    </div>
+  </div>
+</div>
+
+{% if flash %}<div class="alert alert-{{ flash.type }}" style="margin-bottom:16px;">{{ flash.message }}</div>{% endif %}
+
+<!-- Stats -->
+<div class="stat-row" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-label">Total topics</div>
+    <div class="stat-number">{{ total_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Reports done</div>
+    <div class="stat-number" id="stat-done" style="{% if done_count > 0 %}color:var(--c-success);{% endif %}">{{ done_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Pending</div>
+    <div class="stat-number" id="stat-pending" style="{% if pending_count > 0 %}color:var(--c-gold-dark);{% endif %}">{{ pending_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Errors</div>
+    <div class="stat-number" style="{% if error_count > 0 %}color:var(--c-error);{% endif %}">{{ error_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Running</div>
+    <div class="stat-number" id="stat-running" style="{% if running_count > 0 %}color:var(--c-info);{% endif %}">{{ running_count }}</div>
+  </div>
+</div>
+
+<!-- Two-column layout -->
+<div class="project-layout">
+
+  <!-- ── Queue panel ──────────────────────────────────────────── -->
+  <div class="queue-card">
+    <div class="queue-card-header">
+      <div class="queue-card-title-row">
+        <span class="queue-card-title">Research Queue</span>
+        <span class="queue-card-count">{{ total_count }} topic{% if total_count != 1 %}s{% endif %}</span>
+      </div>
+      <div class="qtabs">
+        <a class="qtab active" data-filter="all"     onclick="filterQ('all');return false;">All ({{ total_count }})</a>
+        <a class="qtab"        data-filter="pending" onclick="filterQ('pending');return false;">Pending ({{ pending_count }})</a>
+        <a class="qtab"        data-filter="done"    onclick="filterQ('done');return false;">Done ({{ done_count }})</a>
+        {% if error_count > 0 %}<a class="qtab" data-filter="error" onclick="filterQ('error');return false;">Errors ({{ error_count }})</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="queue-body" id="queue-body">
+      {% if topics %}
+        {% for t in topics %}
+        <div class="qrow qr-{{ t.status }}" id="qrow-{{ t.id }}" data-status="{{ t.status }}" data-id="{{ t.id }}">
+
+          <!-- col 1: drag handle (pending) / position num (others) -->
+          <div class="qrow-handle">
+            {% if t.status == 'pending' %}
+            <div class="drag-handle" title="Drag to reorder">⠿</div>
+            {% else %}
+            <div class="qrow-num"></div>
+            {% endif %}
+          </div>
+
+          <!-- col 2: status icon -->
+          <div class="qrow-icon">
+            {% if t.status == 'done' %}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            {% elif t.status == 'error' %}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-error)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {% elif t.status == 'running' %}
+              <div class="rdot"></div>
+            {% else %}
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--c-card-border);"></div>
+            {% endif %}
+          </div>
+
+          <!-- col 3: text -->
+          <div class="qrow-text">
+            <div class="qrow-title" title="{{ t.topic }}">{{ t.topic }}</div>
+            <div class="qrow-meta">
+              <span class="qrow-cat">{{ t.category }}</span>
+              {% if t.created_at %}<span>{{ t.created_at.strftime('%d %b') }}</span>{% endif %}
+              {% if t.completed_at %}<span>· {{ t.completed_at.strftime('%d %b') }}</span>{% endif %}
+            </div>
+          </div>
+
+          <!-- col 4: actions (forms must have display:contents) -->
+          <div class="qrow-actions">
+            {% if t.status == 'pending' %}
+              <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/run">
+                <button type="submit" class="btn btn-gold btn-sm">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run
+                </button>
+              </form>
+              <button class="btn btn-secondary btn-sm" onclick="openEdit({{ t.id }})">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/delete" onsubmit="deleteTopic(event,{{ t.id }})">
+                <button type="submit" class="btn btn-sm" style="color:var(--c-text-muted);border:1px solid var(--c-card-border);">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              </form>
+              <span class="badge badge-pending">pending</span>
+            {% elif t.status == 'done' %}
+              {% if t.finding_id %}
+              <a href="/report/{{ t.finding_id }}" class="btn btn-secondary btn-sm">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Report
+              </a>
+              {% endif %}
+              <span class="badge badge-done">done</span>
+            {% elif t.status == 'error' %}
+              <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/retry">
+                <button type="submit" class="btn btn-secondary btn-sm">Retry</button>
+              </form>
+              <span class="badge badge-error">error</span>
+            {% elif t.status == 'running' %}
+              <span class="badge badge-running" id="rbadge-{{ t.id }}">running</span>
+            {% endif %}
+          </div>
+
+          <!-- Running stage bar (always in DOM so SSE can update it) -->
+          <div class="qrow-running-bar" id="rbar-{{ t.id }}" {% if t.status != 'running' %}style="display:none"{% endif %}>
+            <div class="rdot"></div>
+            <span id="rstage-{{ t.id }}">Researching…</span>
+          </div>
+
+          <!-- Inline edit (spans all columns, hidden by default) -->
+          {% if t.status == 'pending' %}
+          <div class="qrow-edit" id="edit-{{ t.id }}">
+            <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/edit" onsubmit="submitEdit(event,{{ t.id }})" style="display:block">
+              <div style="margin-bottom:8px;">
+                <input class="form-input" name="topic" value="{{ t.topic }}" style="width:100%;" required />
+              </div>
+              <div class="qrow-edit-inner">
+                <select class="form-select" name="category">
+                  {% for cat in categories %}<option value="{{ cat }}" {% if cat == t.category %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="closeEdit({{ t.id }})">Cancel</button>
+              </div>
+              <input type="hidden" name="sop_hint" value="{{ t.sop_hint or '' }}" />
+            </form>
+          </div>
+          {% endif %}
+
+        </div><!-- /qrow -->
+        {% endfor %}
+        <div id="q-empty" style="display:none;text-align:center;padding:24px;color:var(--c-text-muted);font-size:13px;">No topics match this filter.</div>
+      {% else %}
+        <div style="text-align:center;padding:48px 20px;color:var(--c-text-muted);">
+          <div style="font-size:36px;margin-bottom:12px;opacity:0.3;">🔬</div>
+          <div style="font-size:13px;">No topics yet. Queue your first topic above.</div>
+        </div>
+      {% endif %}
+    </div>
+  </div><!-- /queue-card -->
+
+  <!-- ── Engine panel (right col) ────────────────────────────── -->
+  <div class="engine-col">
+
+    <!-- Research engine card -->
+    <div class="engine-card" id="engine-card">
+
+      <!-- Idle state -->
+      <div id="engine-idle">
+        <div class="engine-card-header">
+          <div class="status-idle" id="eng-dot"></div>
+          <span class="engine-card-title">Research Engine</span>
+        </div>
+        <div class="engine-idle">
+          <div class="engine-idle-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <div class="engine-idle-title">Ready to research</div>
+          <div class="engine-idle-desc">Run a topic from the queue to stream live progress — queries, sources, scrape results, and LLM output shown here.</div>
+        </div>
+      </div>
+
+      <!-- Live state (hidden until running) -->
+      <div id="engine-live" style="display:none;">
+        <div class="engine-card-header">
+          <div class="status-live" id="eng-dot-live"></div>
+          <div style="flex:1;min-width:0;">
+            <div class="engine-card-title" id="eng-topic" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Starting…</div>
+            <div style="font-size:11px;color:var(--c-text-muted);margin-top:1px;" id="eng-prog"></div>
+          </div>
+          <span class="eng-elapsed" id="eng-elapsed">0s</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="eng-prog-fill" style="width:0%"></div></div>
+
+        <!-- Pipeline -->
+        <div class="pipeline">
+          <div class="pipeline-step" id="ps-queries"><div class="pdot"></div><div class="plabel">Queries</div></div>
+          <div class="pipeline-step" id="ps-searching"><div class="pdot"></div><div class="plabel">Search</div></div>
+          <div class="pipeline-step" id="ps-scraping"><div class="pdot"></div><div class="plabel">Scrape</div></div>
+          <div class="pipeline-step" id="ps-synthesising"><div class="pdot"></div><div class="plabel">Synthesise</div></div>
+          <div class="pipeline-step" id="ps-saving"><div class="pdot"></div><div class="plabel">Save</div></div>
+        </div>
+
+        <!-- Sources / scrape meta -->
+        <div class="eng-meta-row" id="eng-meta-row" style="display:none;">
+          <span class="eng-meta-pill" id="eng-sources">0 sources</span>
+          <span class="eng-meta-pill" id="eng-scrape"></span>
+        </div>
+
+        <!-- Live queries -->
+        <div class="engine-section">
+          <div class="engine-section-label">Search queries</div>
+          <div class="ql-wrap" id="eng-queries"></div>
+        </div>
+
+        <!-- Generated files -->
+        <div class="engine-section" id="eng-files-section" style="display:none;">
+          <div class="engine-section-label">Generated files</div>
+          <div class="gen-files-wrap" id="eng-files"></div>
+        </div>
+
+        <!-- Console -->
+        <div class="console-wrap">
+          <div class="console-bar" style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:7px;">
+              <div class="cdot cdot-r"></div><div class="cdot cdot-y"></div><div class="cdot cdot-g"></div>
+              <span class="clabel">research.log</span>
+            </div>
+            <button class="console-clear-btn" onclick="clearConsole()">clear</button>
+          </div>
+          <div class="console-out" id="console-out">
+            <div class="cline cl-info"><span class="ct">--:--</span><span class="cm">Waiting…</span></div>
+          </div>
+        </div>
+
+        <!-- Done notice -->
+        <div id="eng-done-notice" style="display:none;padding:10px 16px;background:rgba(58,107,74,0.08);border-top:1px solid rgba(58,107,74,0.2);font-size:12px;color:var(--c-success);">
+          ✓ Run complete —
+          <a href="" onclick="location.reload();return false;" style="color:var(--c-success);text-decoration:underline;">refresh page</a>
+          to see updated results.
+        </div>
+      </div>
+
+    </div><!-- /engine-card -->
+
+    <!-- Quick add -->
+    <div class="engine-card">
+      <div class="engine-card-header" style="border-bottom:none;">
+        <span class="engine-card-title" style="font-size:12px;font-family:'DM Sans',sans-serif;font-weight:600;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:0.7px;">Quick add</span>
+      </div>
+      <form method="POST" action="/p/{{ project.slug }}/queue" class="quickadd" style="padding-top:0;padding-bottom:14px;">
+        <input class="form-input" name="topic" placeholder="Add a research topic…" required />
+        <input type="hidden" name="category" value="general" />
+        <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;height:34px;">Add</button>
+      </form>
+    </div>
+
+  </div><!-- /engine-col -->
+
+</div><!-- /project-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Filter tabs ──────────────────────────────────────────────
+function filterQ(f) {
+  document.querySelectorAll('.qtab').forEach(t=>t.classList.remove('active'));
+  const tab=document.querySelector('[data-filter="'+f+'"]');
+  if(tab) tab.classList.add('active');
+  let n=0;
+  document.querySelectorAll('.qrow[data-status]').forEach(r=>{
+    const show=f==='all'||r.dataset.status===f;
+    r.style.display=show?'':'none';
+    if(show) n++;
+  });
+  const emp=document.getElementById('q-empty');
+  if(emp) emp.style.display=n===0?'':'none';
+}
+
+// ── Inline edit (fetch, no reload) ──────────────────────────
+function openEdit(id) { document.getElementById('edit-'+id).classList.add('open'); }
+function closeEdit(id) { document.getElementById('edit-'+id).classList.remove('open'); }
+
+function submitEdit(e, id) {
+  e.preventDefault();
+  const form=e.target;
+  const data=new FormData(form);
+  fetch(form.action,{method:'POST',body:data,headers:{Accept:'application/json'}})
+    .then(r=>r.json()).then(()=>{
+      const row=document.getElementById('qrow-'+id);
+      if(row){
+        const title=row.querySelector('.qrow-title');
+        if(title) title.textContent=data.get('topic');
+        const cat=row.querySelector('.qrow-cat');
+        if(cat) cat.textContent=data.get('category');
+      }
+      closeEdit(id);
+    }).catch(()=>form.submit());
+}
+
+// ── Delete (fetch, removes row) ─────────────────────────────
+function deleteTopic(e, id) {
+  e.preventDefault();
+  if(!confirm('Delete this topic?')) return;
+  const form=e.target;
+  fetch(form.action,{method:'POST',body:new FormData(form),headers:{Accept:'application/json'}})
+    .then(()=>{
+      const row=document.getElementById('qrow-'+id);
+      if(row) row.remove();
+      refreshPositions();
+    }).catch(()=>form.submit());
+}
+
+// ── Drag-to-reorder ─────────────────────────────────────────
+let dragSrc=null;
+function refreshPositions(){
+  let i=1;
+  document.querySelectorAll('.qrow[data-status="pending"]').forEach(r=>{
+    const n=r.querySelector('.qrow-num');
+    if(n) n.textContent=i++;
+  });
+}
+
+function initDrag(row){
+  row.setAttribute('draggable','true');
+  row.addEventListener('dragstart',e=>{
+    dragSrc=row;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed='move';
+  });
+  row.addEventListener('dragend',()=>{
+    row.classList.remove('dragging');
+    document.querySelectorAll('.qrow').forEach(r=>r.classList.remove('drag-over'));
+    saveOrder();
+  });
+  row.addEventListener('dragover',e=>{
+    e.preventDefault();
+    if(dragSrc&&dragSrc!==row&&row.dataset.status==='pending'){
+      document.querySelectorAll('.qrow').forEach(r=>r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    }
+  });
+  row.addEventListener('drop',e=>{
+    e.preventDefault();
+    if(!dragSrc||dragSrc===row||row.dataset.status!=='pending') return;
+    const body=document.getElementById('queue-body');
+    const rows=[...body.querySelectorAll('.qrow[data-status="pending"]')];
+    const si=rows.indexOf(dragSrc), ti=rows.indexOf(row);
+    if(si<ti) row.after(dragSrc); else row.before(dragSrc);
+    row.classList.remove('drag-over');
+    refreshPositions();
+  });
+}
+
+function saveOrder(){
+  const ids=[...document.querySelectorAll('.qrow[data-status="pending"]')]
+    .map(r=>parseInt(r.dataset.id)).filter(Boolean);
+  fetch('/api/reorder',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({topic_ids:ids})});
+}
+
+document.querySelectorAll('.qrow[data-status="pending"]').forEach(initDrag);
+refreshPositions();
+
+// ── Pipeline stages ──────────────────────────────────────────
+const STAGES=['queries','searching','scraping','synthesising','saving'];
+const SLABELS={
+  queries:'Generating queries…',searching:'Searching the web…',
+  scraping:'Scraping pages…',synthesising:'LLM synthesising…',saving:'Saving…'
+};
+
+function setPipeline(stage){
+  const idx=STAGES.indexOf(stage);
+  STAGES.forEach((s,i)=>{
+    const el=document.getElementById('ps-'+s);
+    if(!el) return;
+    el.classList.remove('sdone','sactive');
+    if(i<idx) el.classList.add('sdone');
+    else if(i===idx) el.classList.add('sactive');
+  });
+}
+
+// ── Console ──────────────────────────────────────────────────
+const con=document.getElementById('console-out');
+let seeded=false;
+
+function addLog(e){
+  if(!seeded){ con.innerHTML=''; seeded=true; }
+  const d=document.createElement('div');
+  d.className='cline cl-'+(e.level||'info');
+  d.innerHTML='<span class="ct">'+(e.t||'')+'</span><span class="cm">'+esc(e.msg||'')+'</span>';
+  con.appendChild(d);
+  con.scrollTop=con.scrollHeight;
+  while(con.children.length>500) con.removeChild(con.firstChild);
+}
+
+function clearConsole(){ con.innerHTML=''; seeded=false; }
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Elapsed timer ────────────────────────────────────────────
+let elapsedInterval=null;
+let elapsedStart=null;
+
+function startElapsed(){
+  elapsedStart=Date.now();
+  elapsedInterval=setInterval(()=>{
+    const s=Math.floor((Date.now()-elapsedStart)/1000);
+    const m=Math.floor(s/60), ss=s%60;
+    const txt=(m>0?m+'m ':'')+ss+'s';
+    const el=document.getElementById('eng-elapsed');
+    if(el) el.textContent=txt;
+  },1000);
+}
+
+function stopElapsed(){
+  if(elapsedInterval){ clearInterval(elapsedInterval); elapsedInterval=null; }
+}
+
+// ── Query list ───────────────────────────────────────────────
+let renderedQueries=0;
+
+function renderQueries(qs){
+  const wrap=document.getElementById('eng-queries');
+  if(!wrap) return;
+  for(let i=renderedQueries;i<qs.length;i++){
+    const d=document.createElement('div');
+    d.className='ql-item ql-new';
+    d.textContent=qs[i];
+    wrap.appendChild(d);
+  }
+  renderedQueries=qs.length;
+}
+
+// ── Generated files ──────────────────────────────────────────
+let renderedFiles=0;
+
+function renderFiles(files){
+  const wrap=document.getElementById('eng-files');
+  if(!wrap) return;
+  for(let i=renderedFiles;i<files.length;i++){
+    const d=document.createElement('div');
+    d.className='gen-file';
+    d.textContent=files[i].split('/').pop();
+    wrap.appendChild(d);
+  }
+  renderedFiles=files.length;
+  if(files.length>0){
+    const sec=document.getElementById('eng-files-section');
+    if(sec) sec.style.display='';
+  }
+}
+
+// ── Inject running bar into a qrow ───────────────────────────
+function ensureRunningBar(tid){
+  const row=document.getElementById('qrow-'+tid);
+  if(!row) return;
+  if(!document.getElementById('rbar-'+tid)){
+    const bar=document.createElement('div');
+    bar.className='qrow-running-bar';
+    bar.id='rbar-'+tid;
+    bar.innerHTML='<div class="rdot"></div><span id="rstage-'+tid+'">Researching…</span>';
+    row.appendChild(bar);
+  }
+}
+
+// ── Stats live update ────────────────────────────────────────
+let lastTopicId=null;
+
+function updateStats(s){
+  // When a new topic starts, flash the pending stat
+  if(s.topic_id && s.topic_id!==lastTopicId){
+    lastTopicId=s.topic_id;
+    ['stat-pending','stat-done','stat-running'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){ el.classList.remove('stat-flash'); void el.offsetWidth; el.classList.add('stat-flash'); }
+    });
+    const runEl=document.getElementById('stat-running');
+    if(runEl) runEl.textContent=s.running?'1':'0';
+  }
+}
+
+// ── Main SSE state handler ───────────────────────────────────
+let wasRunning=false;
+
+function applyState(s){
+  updateStats(s);
+  if(s.running){
+    document.getElementById('engine-idle').style.display='none';
+    document.getElementById('engine-live').style.display='';
+    document.getElementById('eng-topic').textContent=s.topic||'Running…';
+    const pct=s.total>0?Math.round(s.progress/s.total*100):0;
+    document.getElementById('eng-prog-fill').style.width=pct+'%';
+    document.getElementById('eng-prog').textContent=s.total>1?(s.progress+' of '+s.total+' done'):'';
+    if(s.stage) setPipeline(s.stage);
+    if(s.topic_id){
+      ensureRunningBar(s.topic_id);
+      const bar=document.getElementById('rstage-'+s.topic_id);
+      if(bar&&s.stage) bar.textContent=SLABELS[s.stage]||'Researching…';
+    }
+    if(!wasRunning){ startElapsed(); renderedQueries=0; renderedFiles=0; }
+    if(s.current_queries) renderQueries(s.current_queries);
+    if(s.generated_files) renderFiles(s.generated_files);
+    // sources / scrape
+    const sc=document.getElementById('eng-sources');
+    if(sc&&s.source_count>0) sc.textContent=s.source_count+' sources';
+    const sp=document.getElementById('eng-scrape');
+    if(sp&&s.scrape_progress) sp.textContent='Scraping '+s.scrape_progress;
+    // meta row visibility
+    const mr=document.getElementById('eng-meta-row');
+    if(mr&&(s.source_count>0||s.scrape_progress)) mr.style.display='';
+    wasRunning=true;
+  } else {
+    if(wasRunning){
+      wasRunning=false;
+      stopElapsed();
+      // Don't auto-reload — let user read console. Show a "refresh" prompt instead.
+      const notice=document.getElementById('eng-done-notice');
+      if(notice) notice.style.display='';
+    }
+    document.getElementById('engine-idle').style.display='';
+    document.getElementById('engine-live').style.display='none';
+  }
+}
+
+// ── SSE connect with back-off ────────────────────────────────
+let sseRetry=1000;
+function connect(){
+  const es=new EventSource('/api/run-stream');
+  es.onopen=()=>{ sseRetry=1000; };
+  es.onmessage=function(e){
+    try{
+      const d=JSON.parse(e.data);
+      if(d.type==='state') applyState(d);
+      else if(d.type==='log') addLog(d);
+      else if(d.type==='done'){
+        const notice=document.getElementById('eng-done-notice');
+        if(notice) notice.style.display='';
+      }
+    }catch(_){}
+  };
+  es.onerror=function(){
+    es.close();
+    setTimeout(connect, sseRetry);
+    sseRetry=Math.min(sseRetry*2, 30000);
+  };
+}
+connect();
+</script>
+
+<!-- Queue topic modal -->
+<div class="modal-overlay hidden" id="modal-new-topic">
+  <div class="modal" style="max-width:520px;">
+    <h2 class="modal-title">Queue research topic</h2>
+    <form method="POST" action="/p/{{ project.slug }}/queue">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Research topic</label>
+        <input class="form-input" name="topic" placeholder="e.g. supplier lead time variability management" required autofocus style="width:100%;"/>
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Category</label>
+        <select class="form-select" name="category" style="width:100%;">
+          {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Custom structure hint (optional)</label>
+        <textarea class="form-textarea" name="sop_hint" placeholder="Leave blank for default report structure…" style="width:100%;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-topic')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add to queue</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
