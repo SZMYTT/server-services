@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% block title %}Nutrition — HealthOS{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Nutrition</h1>
+  <p class="page-subtitle">Meal builder with macro tracking</p>
+</div>
+
+<div class="nutrition-grid">
+
+  <!-- ── Left rail: recipe list ── -->
+  <div class="recipe-rail">
+    <div class="card-title" style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+      Recipes
+      <button class="btn btn-secondary" style="height:28px;font-size:12px;" onclick="showNewRecipeModal()">+ New</button>
+    </div>
+
+    <div id="recipe-list">
+      {% if recipes %}
+        {% for r in recipes %}
+        <div class="recipe-list-item" id="recipe-item-{{ r.id }}" onclick="loadRecipe({{ r.id }})">
+          <div style="font-weight:500;font-size:13px;">{{ r.name }}</div>
+          {% if r.notes %}<div style="font-size:11.5px;color:var(--c-text-muted);">{{ r.notes }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" id="recipe-empty">No recipes yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Right panel: recipe builder ── -->
+  <div>
+
+    <!-- Empty state -->
+    <div class="card" id="recipe-empty-panel">
+      <div class="empty-state" style="padding:40px 0;">Select or create a recipe to start building.</div>
+    </div>
+
+    <!-- Builder panel (hidden until recipe selected) -->
+    <div id="recipe-builder" style="display:none;">
+
+      <!-- Macro totals strip -->
+      <div class="macro-strip" id="macro-strip">
+        <div class="macro-cell"><div class="macro-label">Calories</div><div class="macro-val" id="m-kcal">—</div></div>
+        <div class="macro-cell"><div class="macro-label">Protein</div><div class="macro-val" id="m-protein">—<span class="macro-unit">g</span></div></div>
+        <div class="macro-cell"><div class="macro-label">Carbs</div><div class="macro-val" id="m-carbs">—<span class="macro-unit">g</span></div></div>
+        <div class="macro-cell"><div class="macro-label">Fat</div><div class="macro-val" id="m-fat">—<span class="macro-unit">g</span></div></div>
+        <div class="macro-cell"><div class="macro-label">Fibre</div><div class="macro-val" id="m-fibre">—<span class="macro-unit">g</span></div></div>
+      </div>
+
+      <!-- Recipe name header -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="card-title" id="recipe-title" style="margin:0;"></div>
+          <span style="font-size:12px;color:var(--c-text-muted);" id="recipe-total-g"></span>
+        </div>
+      </div>
+
+      <!-- Ingredient list -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+          Ingredients
+        </div>
+        <div id="ingredient-rows">
+          <div class="empty-state" id="ingredients-empty">No ingredients yet.</div>
+        </div>
+      </div>
+
+      <!-- Add ingredient panel -->
+      <div class="card">
+        <div class="card-title">Add ingredient</div>
+
+        <!-- Barcode lookup row -->
+        <div class="form-row" style="margin-bottom:12px;">
+          <div class="form-group" style="flex:2;margin:0;">
+            <label class="form-label">Barcode</label>
+            <input class="form-input" id="barcode-input" type="text" inputmode="numeric"
+                   placeholder="5000168200922" />
+          </div>
+          <div class="form-group" style="flex:0;margin:0;align-self:flex-end;">
+            <button class="btn btn-secondary" style="height:38px;white-space:nowrap;"
+                    onclick="lookupBarcode()">Lookup</button>
+          </div>
+        </div>
+
+        <!-- Name search -->
+        <div class="form-group" style="position:relative;">
+          <label class="form-label">Search by name</label>
+          <input class="form-input" id="ing-search" type="text" placeholder="e.g. chicken breast"
+                 oninput="searchIngredients(this.value)" autocomplete="off" />
+          <div class="search-dropdown" id="search-dropdown" style="display:none;"></div>
+        </div>
+
+        <!-- Selected ingredient info -->
+        <div id="ing-selected" style="display:none;">
+          <div class="selected-ing-card" id="selected-ing-info"></div>
+          <div class="form-row" style="margin-top:10px;align-items:flex-end;">
+            <div class="form-group" style="flex:1;margin:0;">
+              <label class="form-label">Quantity (g)</label>
+              <input class="form-input" id="ing-qty" type="number" min="1" max="5000"
+                     value="100" placeholder="100" />
+            </div>
+            <div class="form-group" style="flex:0;margin:0;">
+              <button class="btn btn-primary" style="height:38px;" onclick="addIngredient()">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual create link -->
+        <div style="margin-top:12px;text-align:center;">
+          <button class="link-btn" onclick="showManualModal()">+ Create ingredient manually</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     New Recipe Modal
+════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="new-recipe-modal" style="display:none;" onclick="closeNewRecipeModal(event)">
+  <div class="modal-box" style="width:380px;">
+    <div class="modal-header">
+      <div class="modal-title">New Recipe</div>
+      <button class="modal-close" onclick="closeNewRecipeModal()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input class="form-input" id="new-recipe-name" placeholder="e.g. Post-workout shake" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (optional)</label>
+      <input class="form-input" id="new-recipe-notes" placeholder="Timing, context…" />
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeNewRecipeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createRecipe()">Create</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     Manual Ingredient Modal
+════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="manual-modal" style="display:none;" onclick="closeManualModal(event)">
+  <div class="modal-box" style="width:440px;">
+    <div class="modal-header">
+      <div class="modal-title">Add ingredient manually</div>
+      <button class="modal-close" onclick="closeManualModal()">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label">Name *</label>
+        <input class="form-input" id="m-name" placeholder="Chicken breast" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Brand</label>
+        <input class="form-input" id="m-brand" placeholder="optional" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Serving size (g)</label>
+        <input class="form-input" id="m-serving" type="number" value="100" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Calories (kcal)</label>
+        <input class="form-input" id="m-kcal" type="number" step="0.1" placeholder="per 100g" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Protein (g)</label>
+        <input class="form-input" id="m-prot" type="number" step="0.1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carbs (g)</label>
+        <input class="form-input" id="m-carb" type="number" step="0.1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fat (g)</label>
+        <input class="form-input" id="m-fat-inp" type="number" step="0.1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fibre (g)</label>
+        <input class="form-input" id="m-fibre-inp" type="number" step="0.1" />
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeManualModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveManualIngredient()">Save & add</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let _currentRecipeId = null;
+let _selectedIngredient = null;
+
+// ── Load recipe ────────────────────────────────────────────────────────────
+async function loadRecipe(id) {
+  _currentRecipeId = id;
+  document.querySelectorAll('.recipe-list-item').forEach(el => el.classList.remove('active'));
+  const item = document.getElementById(`recipe-item-${id}`);
+  if (item) item.classList.add('active');
+
+  const res = await fetch(`/api/recipes/${id}`);
+  const data = await res.json();
+
+  document.getElementById('recipe-empty-panel').style.display = 'none';
+  document.getElementById('recipe-builder').style.display = 'block';
+  document.getElementById('recipe-title').textContent = data.name;
+
+  renderIngredients(data.ingredients);
+  renderTotals(data.totals);
+}
+
+function renderIngredients(items) {
+  const container = document.getElementById('ingredient-rows');
+  const empty = document.getElementById('ingredients-empty');
+
+  if (!items.length) {
+    container.innerHTML = '<div class="empty-state" id="ingredients-empty">No ingredients yet.</div>';
+    return;
+  }
+
+  container.innerHTML = items.map(item => `
+    <div class="ing-row" id="ing-row-${item.item_id}">
+      <div class="ing-row-info">
+        <div class="ing-name">${item.name}${item.brand ? ` <span class="ing-brand">${item.brand}</span>` : ''}</div>
+        <div class="ing-macros">
+          ${item.quantity_g}g
+          ${item.kcal ? `· ${item.kcal} kcal` : ''}
+          ${item.protein_g ? `· P: ${item.protein_g}g` : ''}
+          ${item.carbs_g ? `· C: ${item.carbs_g}g` : ''}
+          ${item.fat_g ? `· F: ${item.fat_g}g` : ''}
+        </div>
+      </div>
+      <button class="btn btn-secondary ing-remove-btn"
+              onclick="removeIngredient(${item.item_id})">×</button>
+    </div>
+  `).join('');
+}
+
+function renderTotals(totals) {
+  document.getElementById('m-kcal').textContent    = totals.kcal    ? totals.kcal.toFixed(0)    : '—';
+  document.getElementById('m-protein').childNodes[0].textContent = totals.protein_g ? totals.protein_g.toFixed(1) : '—';
+  document.getElementById('m-carbs').childNodes[0].textContent   = totals.carbs_g   ? totals.carbs_g.toFixed(1)   : '—';
+  document.getElementById('m-fat').childNodes[0].textContent     = totals.fat_g     ? totals.fat_g.toFixed(1)     : '—';
+  document.getElementById('m-fibre').childNodes[0].textContent   = totals.fibre_g   ? totals.fibre_g.toFixed(1)   : '—';
+}
+
+// ── Remove ingredient ─────────────────────────────────────────────────────
+async function removeIngredient(itemId) {
+  await fetch(`/api/recipes/${_currentRecipeId}/ingredients/${itemId}`, {method: 'DELETE'});
+  await loadRecipe(_currentRecipeId);
+}
+
+// ── Barcode lookup ─────────────────────────────────────────────────────────
+async function lookupBarcode() {
+  const barcode = document.getElementById('barcode-input').value.trim();
+  if (!barcode) { showToast('Enter a barcode', 'error'); return; }
+
+  const res = await fetch(`/api/ingredients/barcode/${encodeURIComponent(barcode)}`);
+  if (res.status === 404) {
+    showToast('Barcode not found in Open Food Facts', 'error');
+    return;
+  }
+  const data = await res.json();
+  selectIngredient(data);
+  document.getElementById('barcode-input').value = '';
+  showToast(`Found: ${data.name}`);
+}
+
+// ── Name search ────────────────────────────────────────────────────────────
+let _searchTimer = null;
+function searchIngredients(q) {
+  clearTimeout(_searchTimer);
+  const dd = document.getElementById('search-dropdown');
+  if (q.length < 2) { dd.style.display = 'none'; return; }
+  _searchTimer = setTimeout(async () => {
+    const res = await fetch(`/api/ingredients/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!data.length) { dd.style.display = 'none'; return; }
+    dd.style.display = 'block';
+    dd.innerHTML = data.map(i =>
+      `<div class="dropdown-item" onclick='selectIngredient(${JSON.stringify(i).replace(/'/g, "&#39;")})'>
+        <span>${i.name}</span>
+        ${i.brand ? `<span style="font-size:11px;color:var(--c-text-muted);">${i.brand}</span>` : ''}
+      </div>`
+    ).join('');
+  }, 250);
+}
+
+function selectIngredient(ing) {
+  _selectedIngredient = ing;
+  document.getElementById('search-dropdown').style.display = 'none';
+  document.getElementById('ing-search').value = ing.name;
+
+  const macroLine = [
+    ing.kcal     ? `${ing.kcal} kcal` : null,
+    ing.protein_g ? `P: ${ing.protein_g}g` : null,
+    ing.carbs_g   ? `C: ${ing.carbs_g}g` : null,
+    ing.fat_g     ? `F: ${ing.fat_g}g` : null,
+  ].filter(Boolean).join(' · ');
+
+  document.getElementById('selected-ing-info').innerHTML = `
+    <div style="font-weight:500;">${ing.name}${ing.brand ? ` <span style="font-weight:400;color:var(--c-text-muted);">${ing.brand}</span>` : ''}</div>
+    <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">per 100g: ${macroLine || '—'}</div>
+  `;
+  document.getElementById('ing-selected').style.display = 'block';
+}
+
+// ── Add ingredient to recipe ───────────────────────────────────────────────
+async function addIngredient() {
+  if (!_selectedIngredient) { showToast('Select an ingredient first', 'error'); return; }
+  const qty = parseFloat(document.getElementById('ing-qty').value);
+  if (!qty || qty <= 0) { showToast('Enter a valid quantity', 'error'); return; }
+
+  const res = await fetch(`/api/recipes/${_currentRecipeId}/ingredients`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ingredient_id: _selectedIngredient.id, quantity_g: qty}),
+  });
+
+  if (res.status === 201) {
+    _selectedIngredient = null;
+    document.getElementById('ing-selected').style.display = 'none';
+    document.getElementById('ing-search').value = '';
+    document.getElementById('ing-qty').value = '100';
+    await loadRecipe(_currentRecipeId);
+    showToast('Ingredient added');
+  } else {
+    showToast('Error adding ingredient', 'error');
+  }
+}
+
+// ── New recipe modal ───────────────────────────────────────────────────────
+function showNewRecipeModal() {
+  document.getElementById('new-recipe-name').value = '';
+  document.getElementById('new-recipe-notes').value = '';
+  document.getElementById('new-recipe-modal').style.display = 'flex';
+}
+function closeNewRecipeModal(e) {
+  if (!e || e.target.classList.contains('modal-overlay'))
+    document.getElementById('new-recipe-modal').style.display = 'none';
+}
+async function createRecipe() {
+  const name = document.getElementById('new-recipe-name').value.trim();
+  if (!name) { showToast('Enter a name', 'error'); return; }
+  const res = await fetch('/api/recipes', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, notes: document.getElementById('new-recipe-notes').value.trim()}),
+  });
+  if (res.status === 201) {
+    const data = await res.json();
+    closeNewRecipeModal();
+
+    // Append to rail
+    const empty = document.getElementById('recipe-empty');
+    if (empty) empty.remove();
+    const item = document.createElement('div');
+    item.className = 'recipe-list-item';
+    item.id = `recipe-item-${data.id}`;
+    item.onclick = () => loadRecipe(data.id);
+    item.innerHTML = `<div style="font-weight:500;font-size:13px;">${name}</div>`;
+    document.getElementById('recipe-list').prepend(item);
+
+    loadRecipe(data.id);
+    showToast(`Created: ${name}`);
+  } else {
+    showToast('Error creating recipe', 'error');
+  }
+}
+
+// ── Manual ingredient modal ────────────────────────────────────────────────
+function showManualModal() {
+  ['m-name','m-brand','m-serving','m-kcal','m-prot','m-carb','m-fat-inp','m-fibre-inp']
+    .forEach(id => { document.getElementById(id).value = id === 'm-serving' ? '100' : ''; });
+  document.getElementById('manual-modal').style.display = 'flex';
+}
+function closeManualModal(e) {
+  if (!e || e.target.classList.contains('modal-overlay'))
+    document.getElementById('manual-modal').style.display = 'none';
+}
+async function saveManualIngredient() {
+  const name = document.getElementById('m-name').value.trim();
+  if (!name) { showToast('Name required', 'error'); return; }
+
+  const g = v => { const f = parseFloat(v); return isNaN(f) ? null : f; };
+  const res = await fetch('/api/ingredients', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      name,
+      brand:         document.getElementById('m-brand').value.trim() || null,
+      serving_size_g: g(document.getElementById('m-serving').value) || 100,
+      kcal:          g(document.getElementById('m-kcal').value),
+      protein_g:     g(document.getElementById('m-prot').value),
+      carbs_g:       g(document.getElementById('m-carb').value),
+      fat_g:         g(document.getElementById('m-fat-inp').value),
+      fibre_g:       g(document.getElementById('m-fibre-inp').value),
+    }),
+  });
+
+  if (res.status === 201) {
+    const data = await res.json();
+    closeManualModal();
+    selectIngredient({...data, protein_g: null, carbs_g: null, fat_g: null, fibre_g: null, kcal: null});
+    showToast(`Saved: ${name}`);
+  } else {
+    showToast('Error saving ingredient', 'error');
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#ing-search') && !e.target.closest('#search-dropdown'))
+    document.getElementById('search-dropdown').style.display = 'none';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,501 @@
+{% extends "base.html" %}
+{% block title %}Food Diary | HealthOS{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.diary-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) { .diary-grid { grid-template-columns: 1fr; } }
+
+/* ── Macro panel ─────────────────────────────────────────── */
+.macro-panel-label {
+  font-size: 10.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--c-text-muted); margin-bottom: 16px;
+}
+.kcal-ring-wrap {
+  position: relative; width: 160px; margin: 0 auto 16px;
+}
+.kcal-ring-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.kcal-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 2rem; font-weight: 700;
+  color: var(--c-text-primary); line-height: 1;
+}
+.kcal-sub { font-size: 12px; color: var(--c-text-muted); }
+
+.macro-rings-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 20px;
+}
+.macro-ring-item { text-align: center; }
+.macro-ring-item .m-val {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px; font-weight: 700;
+  color: var(--c-text-primary); margin-top: 4px;
+}
+.macro-ring-item .m-label {
+  font-size: 10.5px; color: var(--c-text-muted); margin-top: 1px;
+}
+
+/* ── Water bar ───────────────────────────────────────────── */
+.water-section { margin-bottom: 18px; }
+.water-lbl-row {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--c-text-muted);
+  margin-bottom: 6px;
+}
+.water-track {
+  height: 8px; background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border);
+  border-radius: 99px; overflow: hidden;
+}
+.water-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4BA3C7, #2A7A9B);
+  border-radius: 99px; transition: width 0.5s ease;
+}
+.water-btns { display: flex; gap: 6px; margin-top: 8px; }
+.water-quick-btn {
+  flex: 1; height: 30px; font-size: 12px; font-weight: 500;
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border);
+  border-radius: 5px; color: var(--c-text-secondary);
+  cursor: pointer; transition: border-color 0.15s;
+}
+.water-quick-btn:hover { border-color: var(--c-gold); }
+
+/* ── Meal feed ───────────────────────────────────────────── */
+.meal-group { margin-bottom: 14px; }
+.meal-group-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px;
+  background: var(--c-header);
+  border-radius: 8px 8px 0 0;
+}
+.meal-group-name {
+  font-size: 12px; font-weight: 600; text-transform: capitalize;
+  letter-spacing: 0.05em; color: var(--c-text-on-dark);
+}
+.meal-group-kcal { font-size: 12px; color: var(--c-text-on-dark-m); }
+.meal-group-body {
+  border: 1px solid var(--c-card-border); border-top: none;
+  border-radius: 0 0 8px 8px; overflow: hidden;
+}
+.meal-col-head {
+  display: grid;
+  grid-template-columns: 1fr 58px 60px 52px 52px;
+  gap: 6px; padding: 6px 14px;
+  font-size: 10.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--c-text-muted);
+  background: var(--c-card);
+  border-bottom: 1px solid var(--c-card-border);
+}
+.meal-col-head span:not(:first-child) { text-align: right; }
+.meal-row-entry {
+  display: grid;
+  grid-template-columns: 1fr 58px 60px 52px 52px;
+  gap: 6px; padding: 9px 14px;
+  font-size: 13px; align-items: center;
+  background: var(--c-card);
+  border-bottom: 1px solid rgba(226,217,196,0.5);
+}
+.meal-row-entry:last-child { border-bottom: none; }
+.meal-row-name { color: var(--c-text-primary); font-weight: 500; }
+.meal-row-mac { text-align: right; color: var(--c-text-muted); font-size: 12.5px; }
+.meal-add-btn {
+  width: 100%; padding: 8px;
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border); border-top: none;
+  border-radius: 0 0 8px 8px;
+  font-size: 12px; color: var(--c-text-muted);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.meal-add-btn:hover { color: var(--c-gold-dark); border-color: var(--c-gold); }
+
+.diary-empty {
+  background: var(--c-card);
+  border: 1px dashed var(--c-card-border);
+  border-radius: 10px; padding: 40px 24px;
+  text-align: center; color: var(--c-text-muted);
+}
+
+/* ── Targets modal ───────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(22,41,32,0.45); z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+
+/* ── Food search dropdown ────────────────────────────────── */
+.food-search-wrap { position: relative; }
+.food-search-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: var(--c-card); border: 1px solid var(--c-card-border);
+  border-radius: 6px; box-shadow: var(--shadow-modal);
+  z-index: 50; max-height: 200px; overflow-y: auto;
+  display: none;
+}
+.food-search-dropdown.open { display: block; }
+.food-drop-item {
+  padding: 9px 14px; font-size: 13px; cursor: pointer;
+  border-bottom: 1px solid rgba(226,217,196,0.5);
+  transition: background 0.1s;
+}
+.food-drop-item:last-child { border-bottom: none; }
+.food-drop-item:hover { background: var(--c-input-bg); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+  <div>
+    <h1 class="page-title">Food Diary</h1>
+    <p class="page-subtitle" id="diaryDate"></p>
+  </div>
+  <button class="btn btn-primary" onclick="openAddFood('meal')">+ Log Food</button>
+</div>
+
+<div class="diary-grid">
+
+  <!-- Left: Macro Panel -->
+  <div class="card" style="position:sticky;top:0;">
+    <div class="macro-panel-label">Today's Nutrition</div>
+
+    <!-- Kcal ring -->
+    <div class="kcal-ring-wrap">
+      <canvas id="kcalRing" height="160"></canvas>
+      <div class="kcal-ring-center">
+        <span class="kcal-num" id="kcalConsumed">0</span>
+        <span class="kcal-sub">of <span id="kcalTarget">2500</span> kcal</span>
+      </div>
+    </div>
+
+    <!-- P/C/F mini rings -->
+    <div class="macro-rings-row">
+      <div class="macro-ring-item">
+        <canvas id="proteinRing" height="72" style="width:72px;height:72px;"></canvas>
+        <div class="m-val" id="proteinVal">0g</div>
+        <div class="m-label">Protein</div>
+      </div>
+      <div class="macro-ring-item">
+        <canvas id="carbsRing" height="72" style="width:72px;height:72px;"></canvas>
+        <div class="m-val" id="carbsVal">0g</div>
+        <div class="m-label">Carbs</div>
+      </div>
+      <div class="macro-ring-item">
+        <canvas id="fatRing" height="72" style="width:72px;height:72px;"></canvas>
+        <div class="m-val" id="fatVal">0g</div>
+        <div class="m-label">Fat</div>
+      </div>
+    </div>
+
+    <!-- Water -->
+    <div class="water-section">
+      <div class="water-lbl-row">
+        <span>💧 Water</span>
+        <span id="waterLabel">0 / 2.5 L</span>
+      </div>
+      <div class="water-track">
+        <div class="water-fill" id="waterFill" style="width:0%"></div>
+      </div>
+      <div class="water-btns">
+        <button class="water-quick-btn" onclick="logWater(150)">+150 ml</button>
+        <button class="water-quick-btn" onclick="logWater(250)">+250 ml</button>
+        <button class="water-quick-btn" onclick="logWater(500)">+500 ml</button>
+      </div>
+    </div>
+
+    <button class="link-btn" style="display:block;text-align:center;width:100%;" onclick="openTargets()">
+      ⚙ Set daily targets
+    </button>
+  </div>
+
+  <!-- Right: Meal feed -->
+  <div id="diaryFeed">
+    <div class="diary-empty">Loading diary…</div>
+  </div>
+
+</div>
+
+<!-- Targets modal -->
+<div class="modal-overlay" id="targetsModal">
+  <div class="modal-box" style="width:360px;">
+    <div class="modal-header">
+      <span class="modal-title">Daily Targets</span>
+      <button class="modal-close" onclick="closeTargets()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Calories (kcal)</label>
+      <input class="form-input" type="number" id="tKcal" placeholder="2500">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Protein (g)</label>
+      <input class="form-input" type="number" id="tProtein" placeholder="180">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Carbs (g)</label>
+      <input class="form-input" type="number" id="tCarbs" placeholder="250">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fat (g)</label>
+      <input class="form-input" type="number" id="tFat" placeholder="80">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Water (ml)</label>
+      <input class="form-input" type="number" id="tWater" placeholder="2500">
+    </div>
+    <div class="form-row" style="margin-top:4px;">
+      <button class="btn btn-secondary btn-full" onclick="closeTargets()">Cancel</button>
+      <button class="btn btn-primary btn-full" onclick="saveTargets()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add food modal -->
+<div class="modal-overlay" id="addFoodModal">
+  <div class="modal-box" style="width:400px;">
+    <div class="modal-header">
+      <span class="modal-title">Log Food</span>
+      <button class="modal-close" onclick="closeAddFood()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Meal</label>
+      <select class="form-select" id="addMealType">
+        <option value="breakfast">Breakfast</option>
+        <option value="lunch">Lunch</option>
+        <option value="dinner">Dinner</option>
+        <option value="snack">Snack</option>
+      </select>
+    </div>
+    <div class="form-group food-search-wrap">
+      <label class="form-label">Search food</label>
+      <input class="form-input" type="text" id="foodSearch" placeholder="e.g. Chicken breast" oninput="searchFood()">
+      <div class="food-search-dropdown" id="foodDropdown"></div>
+    </div>
+    <div id="foodQtyWrap" style="display:none;" class="form-group">
+      <label class="form-label">Quantity (g)</label>
+      <input class="form-input" type="number" id="foodQty" value="100">
+    </div>
+    <input type="hidden" id="selectedFoodId">
+    <div class="form-row" style="margin-top:4px;">
+      <button class="btn btn-secondary btn-full" onclick="closeAddFood()">Cancel</button>
+      <button class="btn btn-primary btn-full" onclick="submitFood()">Log</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let diary = { meals:[], totals:{}, targets:{}, water_ml:0 };
+let charts = {};
+
+const RING_COLORS = {
+  kcal: '#8C7455', protein: '#3A6B4A', carbs: '#2A5B6B', fat: '#9B7A2A'
+};
+const MEAL_ORDER = ['breakfast','lunch','dinner','snack','meal'];
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('diaryDate').textContent =
+    new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+  initRings();
+  loadDiary();
+});
+
+// ── Chart rings ──────────────────────────────────────────────
+function makeRing(id, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: { datasets: [{ data: [0,100], backgroundColor: [color, 'rgba(22,41,32,0.08)'], borderWidth: 0, borderRadius: 3 }] },
+    options: { cutout:'72%', rotation:-90, circumference:360,
+               plugins:{ legend:{display:false}, tooltip:{enabled:false} }, animation:{duration:500} }
+  });
+}
+function initRings() {
+  charts.kcal    = makeRing('kcalRing',    RING_COLORS.kcal);
+  charts.protein = makeRing('proteinRing', RING_COLORS.protein);
+  charts.carbs   = makeRing('carbsRing',   RING_COLORS.carbs);
+  charts.fat     = makeRing('fatRing',     RING_COLORS.fat);
+}
+function updateRing(chart, val, max) {
+  const pct = max > 0 ? Math.min(val/max, 1) : 0;
+  chart.data.datasets[0].data = [pct*100, Math.max(0,(1-pct)*100)];
+  chart.update('none');
+}
+
+// ── Load diary ───────────────────────────────────────────────
+async function loadDiary() {
+  const res = await fetch('/api/diary/today');
+  diary = await res.json();
+  renderMacros();
+  renderFeed();
+}
+
+function renderMacros() {
+  const { totals: t, targets: tg, water_ml: w } = diary;
+  document.getElementById('kcalConsumed').textContent = Math.round(t.kcal||0);
+  document.getElementById('kcalTarget').textContent   = tg.kcal||2500;
+  updateRing(charts.kcal,    t.kcal||0,      tg.kcal||2500);
+  updateRing(charts.protein, t.protein_g||0, tg.protein_g||180);
+  updateRing(charts.carbs,   t.carbs_g||0,   tg.carbs_g||250);
+  updateRing(charts.fat,     t.fat_g||0,     tg.fat_g||80);
+  document.getElementById('proteinVal').textContent = Math.round(t.protein_g||0)+'g';
+  document.getElementById('carbsVal').textContent   = Math.round(t.carbs_g||0)+'g';
+  document.getElementById('fatVal').textContent     = Math.round(t.fat_g||0)+'g';
+
+  const wL  = w/1000, tL = (tg.water_ml||2500)/1000;
+  const pct = Math.min(wL/tL*100, 100);
+  document.getElementById('waterLabel').textContent  = `${wL.toFixed(1)} / ${tL.toFixed(1)} L`;
+  document.getElementById('waterFill').style.width   = pct+'%';
+}
+
+function renderFeed() {
+  const feed = document.getElementById('diaryFeed');
+  const { meals } = diary;
+
+  if (!meals || !meals.length) {
+    feed.innerHTML = `<div class="diary-empty">
+      <p style="font-size:15px;font-weight:600;color:var(--c-text-primary);margin-bottom:6px;">Nothing logged yet today</p>
+      <p style="font-size:13px;">Hit <strong>+ Log Food</strong> to start tracking your macros</p>
+    </div>`;
+    return;
+  }
+
+  const groups = {};
+  meals.forEach(m => { const t = m.meal_type||'meal'; (groups[t]=groups[t]||[]).push(m); });
+
+  feed.innerHTML = '';
+  for (const type of MEAL_ORDER) {
+    const items = groups[type];
+    if (!items?.length) continue;
+    const groupKcal = items.reduce((s,m) => s+(m.kcal||0), 0);
+
+    const el = document.createElement('div');
+    el.className = 'meal-group';
+    el.innerHTML = `
+      <div class="meal-group-head">
+        <span class="meal-group-name">${type}</span>
+        <span class="meal-group-kcal">${Math.round(groupKcal)} kcal</span>
+      </div>
+      <div class="meal-group-body">
+        <div class="meal-col-head">
+          <span>Food</span><span style="text-align:right">kcal</span>
+          <span style="text-align:right">Protein</span><span style="text-align:right">Carbs</span><span style="text-align:right">Fat</span>
+        </div>
+        ${items.map(m=>`
+          <div class="meal-row-entry">
+            <span class="meal-row-name">${m.name||'—'}</span>
+            <span class="meal-row-mac">${Math.round(m.kcal)}</span>
+            <span class="meal-row-mac">${Math.round(m.protein_g)}g</span>
+            <span class="meal-row-mac">${Math.round(m.carbs_g)}g</span>
+            <span class="meal-row-mac">${Math.round(m.fat_g)}g</span>
+          </div>`).join('')}
+      </div>
+      <button class="meal-add-btn" onclick="openAddFood('${type}')">+ Add to ${type}</button>
+    `;
+    feed.appendChild(el);
+  }
+}
+
+// ── Water ────────────────────────────────────────────────────
+async function logWater(ml) {
+  await fetch('/api/quick-log/water', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ml})
+  });
+  diary.water_ml += ml;
+  renderMacros();
+  showToast(`+${ml} ml water logged`);
+}
+
+// ── Targets modal ────────────────────────────────────────────
+async function openTargets() {
+  const t = await fetch('/api/targets').then(r=>r.json());
+  document.getElementById('tKcal').value    = t.kcal||2500;
+  document.getElementById('tProtein').value = t.protein_g||180;
+  document.getElementById('tCarbs').value   = t.carbs_g||250;
+  document.getElementById('tFat').value     = t.fat_g||80;
+  document.getElementById('tWater').value   = t.water_ml||2500;
+  document.getElementById('targetsModal').classList.add('open');
+}
+function closeTargets() { document.getElementById('targetsModal').classList.remove('open'); }
+async function saveTargets() {
+  await fetch('/api/targets', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      kcal:     +document.getElementById('tKcal').value,
+      protein_g:+document.getElementById('tProtein').value,
+      carbs_g:  +document.getElementById('tCarbs').value,
+      fat_g:    +document.getElementById('tFat').value,
+      water_ml: +document.getElementById('tWater').value,
+    })
+  });
+  closeTargets(); showToast('Targets saved'); loadDiary();
+}
+
+// ── Add food modal ────────────────────────────────────────────
+function openAddFood(type) {
+  document.getElementById('addMealType').value = type;
+  document.getElementById('foodSearch').value  = '';
+  document.getElementById('foodDropdown').innerHTML = '';
+  document.getElementById('foodDropdown').classList.remove('open');
+  document.getElementById('foodQtyWrap').style.display = 'none';
+  document.getElementById('selectedFoodId').value = '';
+  document.getElementById('addFoodModal').classList.add('open');
+}
+function closeAddFood() { document.getElementById('addFoodModal').classList.remove('open'); }
+
+let _st;
+async function searchFood() {
+  clearTimeout(_st);
+  const q  = document.getElementById('foodSearch').value.trim();
+  const el = document.getElementById('foodDropdown');
+  if (q.length < 2) { el.classList.remove('open'); return; }
+  _st = setTimeout(async () => {
+    const data = await fetch(`/api/ingredients/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
+    el.innerHTML = '';
+    (data.length ? data : [{name:'No results', id:null}]).forEach(item => {
+      const d = document.createElement('div');
+      d.className = 'food-drop-item';
+      d.textContent = item.name + (item.brand ? ` (${item.brand})` : '') + (item.kcal ? ` — ${item.kcal} kcal/100g` : '');
+      if (item.id) d.onclick = () => {
+        document.getElementById('selectedFoodId').value = item.id;
+        document.getElementById('foodSearch').value = item.name;
+        document.getElementById('foodQtyWrap').style.display = '';
+        el.classList.remove('open');
+      };
+      el.appendChild(d);
+    });
+    el.classList.add('open');
+  }, 300);
+}
+
+async function submitFood() {
+  const id  = document.getElementById('selectedFoodId').value;
+  const qty = +document.getElementById('foodQty').value||100;
+  const mt  = document.getElementById('addMealType').value;
+  if (!id) { showToast('Select a food first', 'error'); return; }
+  await fetch('/api/quick-log/food', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ingredient_id:+id, quantity_g:qty, meal_type:mt})
+  });
+  closeAddFood(); showToast('Food logged'); loadDiary();
+}
+</script>
+{% endblock %}

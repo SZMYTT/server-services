@@ -555,17 +555,25 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Two-column page layout ───────────────────────────────────── */
 .project-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 260px 1fr;
   gap: 20px;
   align-items: start;
 }
 @media (max-width: 960px) { .project-layout { grid-template-columns: 1fr; } }
 
-/* ── Engine panel (sticky right col) ─────────────────────────── */
+/* Queue sidebar — narrow left col, sticky so it stays in view while console scrolls */
+.queue-card {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-card-border) transparent;
+}
+
+/* ── Engine panel (wide right col) ───────────────────────────── */
 .engine-col {
   align-self: start;
-  position: sticky;
-  top: 32px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -698,7 +706,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10.5px; line-height: 1.9;
   padding: 10px 12px 12px;
-  max-height: 260px; min-height: 80px;
+  max-height: 520px; min-height: 120px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #1E3A2A transparent;
@@ -1006,3 +1014,176 @@ h1, h2, h3, h4, h5, h6 {
   word-break: break-word;
 }
 
+/* ── Queue row depth badge ───────────────────────────────────── */
+.qrow-depth-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.qrow-depth-thorough { background: rgba(191,168,128,0.2); color: var(--c-gold-dark); }
+.qrow-depth-deep     { background: rgba(42,91,107,0.15);  color: var(--c-info); }
+.qrow-depth-quick    { background: rgba(107,133,120,0.15); color: var(--c-text-muted); }
+
+/* ── Persona Picker ──────────────────────────────────────────── */
+.persona-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.persona-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border: 1.5px solid var(--c-card-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+  text-align: center;
+  background-color: var(--c-input-bg);
+}
+.persona-card:hover { border-color: var(--c-gold); }
+.persona-card.active {
+  border-color: var(--c-gold);
+  background-color: rgba(191,168,128,0.12);
+}
+.persona-icon { font-size: 22px; line-height: 1; }
+.persona-name { font-size: 12px; font-weight: 600; color: var(--c-text-primary); }
+.persona-desc { font-size: 11px; color: var(--c-text-muted); line-height: 1.3; }
+
+/* ── Engine token meter ──────────────────────────────────────── */
+.eng-token-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--c-card-border);
+  flex-wrap: wrap;
+}
+.eng-token-pill {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background-color: var(--c-input-bg);
+  color: var(--c-text-secondary);
+}
+.eng-token-today {
+  color: var(--c-text-muted);
+  margin-left: auto;
+}
+
+/* ── Admin / Intel Hub ───────────────────────────────────────── */
+.admin-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
+}
+@media (max-width: 768px) { .admin-row { grid-template-columns: 1fr; } }
+
+.admin-card-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--c-text-muted);
+  margin-bottom: 14px;
+}
+.admin-vram-card,
+.admin-chart-card {
+  padding: 18px 20px;
+}
+
+/* VRAM bars */
+.vram-model {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.vram-model-name {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--c-text-secondary);
+  min-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vram-model-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background-color: var(--c-input-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.vram-model-bar {
+  height: 100%;
+  background-color: var(--c-gold);
+  border-radius: 3px;
+  transition: width 0.4s;
+}
+.vram-model-size {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--c-text-muted);
+  min-width: 48px;
+  text-align: right;
+}
+.vram-bg {
+  height: 8px;
+  background-color: var(--c-input-bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.vram-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s;
+}
+
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Compact queue (narrow 260px sidebar) ────────────────────── */
+/* Hide meta row and depth badge — saves vertical space in the sidebar */
+.queue-card .qrow-meta { display: none; }
+/* Stack actions vertically so they don't overflow 260px */
+.queue-card .qrow-actions { flex-direction: column; align-items: flex-end; gap: 3px; }
+/* Tighter row padding */
+.queue-card .qrow { padding: 8px 10px; gap: 6px; }
+/* Shrink header padding */
+.queue-card .queue-card-header { padding: 10px 12px 0; }
+.queue-card .queue-body { padding: 8px 10px; gap: 4px; }
+
+/* ── Mission stats strip (replaces cards when running) ───────── */
+.mission-stats {
+  display: flex; gap: 0;
+  background: var(--c-card);
+  border: 1px solid var(--c-card-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+}
+.mission-stat {
+  flex: 1; padding: 10px 16px;
+  border-right: 1px solid var(--c-card-border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mission-stat:last-child { border-right: none; }
+.mission-stat-label {
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.7px;
+  color: var(--c-text-muted);
+}
+.mission-stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px; font-weight: 600;
+  color: var(--c-text-primary);
+}
+.mission-stat-value.live { color: var(--c-gold-dark); }

@@ -42,6 +42,13 @@
       {% endfor %}
     </nav>
 
+    {# Command palette trigger #}
+    <button class="cmd-trigger" id="cmd-trigger" onclick="openPalette()" title="Command palette (Ctrl K)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+      New task…
+      <kbd>⌃K</kbd>
+    </button>
+
     {# Right: status + avatar #}
     <div class="header-right">
       <div class="header-status">
@@ -152,12 +159,138 @@
   </div>
 </div>
 
+{# ── Command Palette Modal ──────────────────────────────────── #}
+<div class="cmd-overlay" id="cmd-overlay" onclick="closePalette()"></div>
+<div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="New task">
+  <div class="cmd-header">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+    <input
+      type="text"
+      id="cmd-input"
+      class="cmd-input"
+      placeholder="Describe a task or ask a question…"
+      autocomplete="off"
+      autocorrect="off"
+    />
+    <kbd class="cmd-esc" onclick="closePalette()">Esc</kbd>
+  </div>
+  <div class="cmd-options">
+    <div class="cmd-row">
+      <span class="cmd-label">Workspace</span>
+      <select id="cmd-workspace" class="cmd-select">
+        <option value="operator">Operator</option>
+        {% if user %}
+          {% for ws_id, meta in ws_meta.items() %}
+            {% if ws_id != 'operator' %}
+              {% set has_access = ('all_workspaces' in user.get('access', [])) or (ws_id in user.get('access', [])) %}
+              {% if has_access or user.get('role') == 'operator' %}
+                <option value="{{ ws_id }}" {% if active_ws == ws_id %}selected{% endif %}>{{ meta.icon }} {{ meta.name }}</option>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-label">Task type</span>
+      <select id="cmd-type" class="cmd-select">
+        <option value="research">Research</option>
+        <option value="content">Content</option>
+        <option value="comms">Comms</option>
+        <option value="generic">Generic</option>
+      </select>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-label">Depth</span>
+      <div class="depth-toggle" id="depth-toggle">
+        <button class="depth-btn active" data-depth="standard" onclick="setDepth(this)">Standard</button>
+        <button class="depth-btn" data-depth="thorough" onclick="setDepth(this)">Thorough</button>
+      </div>
+    </div>
+  </div>
+  <div class="cmd-footer">
+    <span class="cmd-hint" id="cmd-hint"></span>
+    <button class="btn btn-primary" id="cmd-submit" onclick="submitTask()">
+      Run task
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
   function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     sidebar.classList.toggle('open');
     overlay.classList.toggle('visible');
+  }
+
+  // ── Command Palette ─────────────────────────────────────────
+  function openPalette() {
+    document.getElementById('cmd-overlay').classList.add('visible');
+    document.getElementById('cmd-palette').classList.add('visible');
+    setTimeout(() => document.getElementById('cmd-input').focus(), 50);
+  }
+
+  function closePalette() {
+    document.getElementById('cmd-overlay').classList.remove('visible');
+    document.getElementById('cmd-palette').classList.remove('visible');
+    document.getElementById('cmd-hint').textContent = '';
+    document.getElementById('cmd-submit').disabled = false;
+    document.getElementById('cmd-submit').textContent = 'Run task ›';
+  }
+
+  function setDepth(btn) {
+    document.querySelectorAll('.depth-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openPalette(); }
+    if (e.key === 'Escape') closePalette();
+    if (e.key === 'Enter' && document.getElementById('cmd-palette').classList.contains('visible')) {
+      e.preventDefault();
+      submitTask();
+    }
+  });
+
+  async function submitTask() {
+    const input = document.getElementById('cmd-input').value.trim();
+    if (!input) { document.getElementById('cmd-input').focus(); return; }
+
+    const workspace = document.getElementById('cmd-workspace').value;
+    const task_type = document.getElementById('cmd-type').value;
+    const depth  = document.querySelector('.depth-btn.active')?.dataset.depth || 'standard';
+    const urgent = depth === 'thorough';
+
+    const hint   = document.getElementById('cmd-hint');
+    const submit = document.getElementById('cmd-submit');
+    submit.disabled = true;
+    hint.textContent = 'Queuing…';
+
+    try {
+      const res = await fetch('/api/tasks/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_type, module: task_type, input,
+          workspace, user_name: '{{ user.username if user else "operator" }}',
+          depth, urgent,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        hint.textContent = '✓ Task queued — ' + (data.task_id || '').slice(0, 8);
+        document.getElementById('cmd-input').value = '';
+        setTimeout(closePalette, 1200);
+      } else {
+        hint.textContent = 'Error: ' + (data.error || 'unknown');
+        submit.disabled = false;
+      }
+    } catch (err) {
+      hint.textContent = 'Network error';
+      submit.disabled = false;
+    }
   }
 </script>
 {% block scripts %}{% endblock %}

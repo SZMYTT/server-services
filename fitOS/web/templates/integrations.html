@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Integrations — HealthOS{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Integrations</h1>
+  <p class="page-subtitle">Connect wearables and configure notifications</p>
+</div>
+
+{% if request.query_params.get('connected') %}
+<div class="alert alert-success">Fitbit connected successfully. Running first sync…
+  <script>
+    fetch('/api/sync/fitbit', {method:'POST'})
+      .then(r => r.json())
+      .then(d => console.log('[SYNC]', d));
+  </script>
+</div>
+{% endif %}
+{% if request.query_params.get('error') %}
+<div class="alert alert-error">Connection failed: {{ request.query_params.get('error') }}</div>
+{% endif %}
+
+<div class="integrations-grid">
+
+  <!-- ── Fitbit card ── -->
+  <div class="card integration-card">
+    <div class="integration-header">
+      <div class="integration-icon" style="background:#00B0B9;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="integration-name">Fitbit</div>
+        <div class="integration-desc">Google Pixel Watch 2 — sleep, steps, resting heart rate</div>
+      </div>
+      {% if fitbit_connected %}
+        <span class="badge badge-connected">Connected</span>
+      {% else %}
+        <span class="badge badge-disconnected">Not connected</span>
+      {% endif %}
+    </div>
+
+    {% if fitbit_connected %}
+      <div class="integration-meta">
+        {% if last_sync %}
+          <span>Last sync: {{ last_sync[:19].replace('T',' ') }} UTC</span>
+        {% endif %}
+        <span>Auto-syncs daily at 04:00</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-secondary" id="sync-btn" onclick="syncNow()">Sync now</button>
+        <button class="btn btn-secondary" style="color:var(--c-error);border-color:var(--c-error);"
+                onclick="disconnectFitbit()">Disconnect</button>
+      </div>
+      <div class="sync-result" id="sync-result" style="display:none;"></div>
+    {% elif fitbit_configured %}
+      <p style="font-size:12.5px;color:var(--c-text-muted);margin:12px 0;">
+        Authorise HealthOS to read your Fitbit data. You'll be redirected to Fitbit's login page.
+      </p>
+      <a href="/api/fitbit/connect" class="btn btn-primary">Connect Fitbit</a>
+    {% else %}
+      <div class="config-hint">
+        <p>Set <code>FITBIT_CLIENT_ID</code> and <code>FITBIT_CLIENT_SECRET</code> in <code>fitOS/.env</code>
+           to enable Fitbit sync.</p>
+        <ol style="margin-top:8px;padding-left:18px;font-size:12px;line-height:1.8;">
+          <li>Go to <strong>dev.fitbit.com</strong> → Register an app</li>
+          <li>Set OAuth 2.0 callback to <code>http://localhost:4002/api/fitbit/callback</code></li>
+          <li>Copy Client ID and Secret into <code>.env</code></li>
+          <li>Restart fitOS</li>
+        </ol>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- ── FCM card ── -->
+  <div class="card integration-card">
+    <div class="integration-header">
+      <div class="integration-icon" style="background:#F4B400;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="integration-name">Push Notifications</div>
+        <div class="integration-desc">Firebase Cloud Messaging — meal nudges, workout reminders</div>
+      </div>
+      {% if fcm_configured %}
+        <span class="badge badge-connected">Configured</span>
+      {% else %}
+        <span class="badge badge-disconnected">Not configured</span>
+      {% endif %}
+    </div>
+
+    {% if fcm_configured %}
+      <div class="integration-meta">
+        <span>Meal nudge: daily at 13:05 if no meal logged</span>
+      </div>
+      <button class="btn btn-secondary" style="margin-top:14px;" onclick="testNotification()">
+        Send test notification
+      </button>
+      <div id="fcm-result" style="font-size:12px;color:var(--c-text-muted);margin-top:8px;"></div>
+    {% else %}
+      <div class="config-hint">
+        <p>Set <code>FCM_CREDENTIALS_FILE</code> (path to Firebase service account JSON)
+           and <code>FCM_DEVICE_TOKEN</code> in <code>fitOS/.env</code> to enable push.</p>
+        <ol style="margin-top:8px;padding-left:18px;font-size:12px;line-height:1.8;">
+          <li>Create a Firebase project at <strong>console.firebase.google.com</strong></li>
+          <li>Project Settings → Service accounts → Generate new private key</li>
+          <li>Save the JSON file, set path in <code>FCM_CREDENTIALS_FILE</code></li>
+          <li>Get your device's FCM token from the Android app, set in <code>FCM_DEVICE_TOKEN</code></li>
+        </ol>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Water quick-log card ── -->
+  <div class="card integration-card">
+    <div class="integration-header">
+      <div class="integration-icon" style="background:#2A5B6B;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M7 14s1.5 2 5 2 5-2 5-2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="integration-name">Water Intake</div>
+        <div class="integration-desc">Single-tap quick-log — API ready for Android widget</div>
+      </div>
+      <span class="badge badge-connected">Active</span>
+    </div>
+
+    <div class="water-strip" id="water-strip">
+      <div class="water-total" id="water-total">— L</div>
+      <div style="font-size:11px;color:var(--c-text-muted);">logged today</div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn btn-secondary water-btn" onclick="logWater(250)">+250 ml</button>
+      <button class="btn btn-secondary water-btn" onclick="logWater(330)">+330 ml</button>
+      <button class="btn btn-secondary water-btn" onclick="logWater(500)">+500 ml</button>
+      <button class="btn btn-secondary water-btn" onclick="logWater(750)">+750 ml</button>
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <input class="form-input" type="number" id="custom-water" placeholder="Custom ml"
+             min="50" max="2000" style="flex:1;" />
+      <button class="btn btn-primary" style="height:38px;"
+              onclick="logWater(parseInt(document.getElementById('custom-water').value)||0)">Log</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--c-text-muted);margin-top:8px;">
+      Android widget endpoint: <code>POST /api/quick-log/water</code>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function syncNow() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true; btn.textContent = 'Syncing…';
+  const res = await fetch('/api/sync/fitbit', {method:'POST'});
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = 'Sync now';
+  const el = document.getElementById('sync-result');
+  el.style.display = 'block';
+  if (data.error) {
+    el.textContent = `Error: ${data.error}`;
+    el.style.color = 'var(--c-error)';
+  } else {
+    el.textContent = `Synced: ${data.synced.join(', ') || 'nothing new'}`;
+    el.style.color = 'var(--c-success)';
+  }
+}
+
+async function disconnectFitbit() {
+  if (!confirm('Disconnect Fitbit? Stored tokens will be removed.')) return;
+  await fetch('/api/fitbit/disconnect', {method:'DELETE'});
+  location.reload();
+}
+
+async function testNotification() {
+  const el = document.getElementById('fcm-result');
+  el.textContent = 'Sending…';
+  const res = await fetch('/api/notifications/test', {method:'POST'});
+  const data = await res.json();
+  el.textContent = data.sent ? 'Notification sent!' : 'Failed — check FCM credentials';
+  el.style.color = data.sent ? 'var(--c-success)' : 'var(--c-error)';
+}
+
+async function logWater(ml) {
+  if (!ml || ml <= 0) { showToast('Enter a valid amount', 'error'); return; }
+  const res = await fetch('/api/quick-log/water', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ml}),
+  });
+  if (res.status === 201) {
+    showToast(`+${ml} ml logged`);
+    loadWaterTotal();
+    document.getElementById('custom-water').value = '';
+  } else {
+    showToast('Error logging water', 'error');
+  }
+}
+
+async function loadWaterTotal() {
+  const res = await fetch('/api/quick-log/water/today');
+  const data = await res.json();
+  document.getElementById('water-total').textContent =
+    data.total_L > 0 ? `${data.total_L} L` : '0 L';
+}
+
+loadWaterTotal();
+</script>
+{% endblock %}

@@ -77,6 +77,22 @@ DEPTH_CONFIG: dict[str, dict] = {
             "Cross-reference product specs across sources. Do not call done until confidence is 9+."
         ),
     },
+    "titan": {
+        "label":            "Titan (12h agentic)",
+        "est_minutes":      120,
+        "time_budget_s":    60 * 60 * 12,
+        "max_iterations":   120,
+        "page_chars":       20000,
+        "max_scrape":       30,
+        "n_queries":        15,
+        "n_results":        10,
+        "synthesis_tokens": 12000,
+        "agent_instruction": (
+            "Exhaustive research. Document every technical nuance, benchmark, vendor, and data point. "
+            "Leave no sub-topic unexplored. Cite every claim. "
+            "Target 10,000+ words of dense, structured output."
+        ),
+    },
 }
 
 DEFAULT_DEPTH = "standard"

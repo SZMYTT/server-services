@@ -13,3 +13,7 @@ markdown==3.7
 playwright>=1.44.0
 requests>=2.31.0
 crawl4ai>=0.8.0
+chromadb>=0.4.0
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0

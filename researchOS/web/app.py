@@ -42,6 +42,11 @@ _run_state: dict = {
     "elapsed_seconds": 0,
     "started_at": None,
     "error_msg": None,
+    # token telemetry (live, today total)
+    "tokens_today": 0,
+    "cost_gbp_today": 0.0,
+    "tokens_run": 0,
+    "cost_gbp_run": 0.0,
 }
 
 STAGE_LABELS = {
@@ -147,7 +152,7 @@ def _project_topics(project_id: int) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT t.id, t.topic, t.category, t.sop_hint, t.status, t.sort_order,
-                       t.created_at, t.completed_at,
+                       t.created_at, t.completed_at, t.depth,
                        (SELECT f.id FROM supply.research_findings f
                         WHERE f.topic_id = t.id
                         ORDER BY f.created_at DESC LIMIT 1) AS finding_id
@@ -175,8 +180,11 @@ def _project_stats(project_id: int) -> dict:
             return {"total": row[0], "done": row[1], "pending": row[2], "error": row[3], "running": row[4]}
 
 
+_CSS_VERSION = int(BASE_DIR.parent.joinpath("web", "static", "css", "supplyos.css").stat().st_mtime)
+
+
 def _render_ctx(request: Request, extra: dict = None) -> dict:
-    from systemOS.config.depth import choices as depth_choices
+    from systemOS.config.depth import choices as depth_choices, DEPTH_CONFIG as _depth_cfg
     user = get_session_user(request)
     ctx = {
         "request": request,
@@ -187,7 +195,16 @@ def _render_ctx(request: Request, extra: dict = None) -> dict:
         "llm_model": os.getenv("OLLAMA_MODEL", "") or "Claude",
         "categories": ["general", "procurement", "inventory", "forecasting",
                        "logistics", "automation", "tools"],
-        "depth_choices": depth_choices(),  # [(key, label, est_minutes), ...]
+        "depth_choices": depth_choices(),
+        "depth_config": {
+            k: {
+                "n_queries":        v["n_queries"],
+                "max_scrape":       v["max_scrape"],
+                "synthesis_tokens": v["synthesis_tokens"],
+            }
+            for k, v in _depth_cfg.items()
+        },
+        "css_version": _CSS_VERSION,
     }
     if extra:
         ctx.update(extra)
@@ -198,7 +215,7 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def _queue_topic(project_id: int, topic: str, category: str, sop_hint: str | None = None) -> int:
+def _queue_topic(project_id: int, topic: str, category: str, sop_hint: str | None = None, depth: str = "standard") -> int:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -207,13 +224,111 @@ def _queue_topic(project_id: int, topic: str, category: str, sop_hint: str | Non
             )
             max_order = cur.fetchone()[0]
             cur.execute(
-                """INSERT INTO supply.research_topics (project_id, topic, category, sop_hint, status, sort_order)
-                   VALUES (%s, %s, %s, %s, 'pending', %s)
-                   ON CONFLICT (project_id, topic) DO UPDATE SET status='pending', created_at=NOW()
+                """INSERT INTO supply.research_topics (project_id, topic, category, sop_hint, status, sort_order, depth)
+                   VALUES (%s, %s, %s, %s, 'pending', %s, %s)
+                   ON CONFLICT (project_id, topic) DO UPDATE SET status='pending', depth=EXCLUDED.depth, created_at=NOW()
                    RETURNING id""",
-                (project_id, topic, category, sop_hint or None, max_order + 10),
+                (project_id, topic, category, sop_hint or None, max_order + 10, depth),
             )
             return cur.fetchone()[0]
+
+
+async def _run_topic_thorough(tid: int, topic: str, category: str, emit_fn, get_conn_fn):
+    """
+    Thorough path: decompose the topic with Mapmaker, queue the chapters,
+    then mark the original as 'map'. The user runs the chapters next.
+    """
+    from systemOS.agents.mapmaker import build_map
+
+    emit_fn("stage", "queries")
+    emit_fn("info", f"[Mapmaker] Decomposing: {topic[:70]}")
+
+    try:
+        with get_conn_fn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT project_id FROM supply.research_topics WHERE id=%s", (tid,))
+                row = cur.fetchone()
+        project_id = row[0] if row else None
+
+        if not project_id:
+            emit_fn("error", "[Mapmaker] Could not find project_id — falling back to standard")
+            from agents.researcher import research as do_research
+            await do_research(topic=topic, category=category or "general", topic_id=tid, depth="deep", emit=emit_fn)
+            return
+
+        result = await build_map(topic)
+        # Use all_chapters() to keep title + estimated_depth alongside the research_query.
+        # High-priority chapters first; fall back to all if none are marked high.
+        all_ch = result.high_priority_first() or result.all_chapters()
+
+        emit_fn("info", f"[Mapmaker] {result.total_chapters} chapters across {len(result.volumes)} volumes")
+        for ch in all_ch:
+            emit_fn("query", f"  › {ch['research_query']}")
+
+        with get_conn_fn() as conn:
+            with conn.cursor() as cur:
+                # Mark original topic as a map placeholder
+                cur.execute(
+                    "UPDATE supply.research_topics SET status='map' WHERE id=%s", (tid,)
+                )
+                # Queue each chapter with its specific title in the sop_hint so the
+                # synthesis prompt is scoped to that chapter's exact focus area.
+                queued = 0
+                for i, ch in enumerate(all_ch):
+                    chapter_query = ch["research_query"]
+                    chapter_title = ch.get("title", f"Chapter {i + 1}")
+                    chapter_depth = ch.get("estimated_depth", "deep")
+                    sop_hint = f"{chapter_title}. Research this chapter thoroughly and focus exclusively on this specific area. Context: {topic[:120]}"
+                    cur.execute(
+                        """INSERT INTO supply.research_topics
+                               (project_id, topic, category, sop_hint, status, depth, sort_order)
+                           VALUES (%s, %s, %s, %s, 'pending', %s, %s)
+                           ON CONFLICT (project_id, topic) DO NOTHING""",
+                        (project_id, chapter_query, category,
+                         sop_hint, chapter_depth, (i + 1) * 10),
+                    )
+                    if cur.rowcount:
+                        queued += 1
+                        emit_fn("file", f"{chapter_title[:50]}")
+
+        emit_fn("done", f"[Mapmaker] Queued {queued} chapters — refresh to run them")
+
+    except Exception as exc:
+        logger.error("[THOROUGH] Mapmaker failed (%s): %s", type(exc).__name__, exc, exc_info=True)
+        emit_fn("error", f"[Mapmaker] Failed: {type(exc).__name__}: {exc}")
+        with get_conn_fn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE supply.research_topics SET status='error' WHERE id=%s", (tid,))
+
+
+def _refresh_token_state(topic_id: int | None = None):
+    """Update _run_state token counters from llm_call_log after a topic finishes."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Today's grand total
+                cur.execute("""
+                    SELECT COALESCE(SUM(total_tokens),0), COALESCE(SUM(cost_gbp),0)
+                    FROM supply.llm_call_log
+                    WHERE DATE(called_at AT TIME ZONE 'Europe/London') = CURRENT_DATE
+                """)
+                row = cur.fetchone()
+                _run_state["tokens_today"] = int(row[0])
+                _run_state["cost_gbp_today"] = float(row[1])
+                # This run's total (since run started)
+                if _run_state.get("started_at"):
+                    import datetime as _dt
+                    started = _dt.datetime.fromtimestamp(_run_state["started_at"])
+                    cur.execute("""
+                        SELECT COALESCE(SUM(total_tokens),0), COALESCE(SUM(cost_gbp),0)
+                        FROM supply.llm_call_log
+                        WHERE called_at >= %s
+                    """, (started,))
+                    row2 = cur.fetchone()
+                    _run_state["tokens_run"] = int(row2[0])
+                    _run_state["cost_gbp_run"] = float(row2[1])
+    except Exception as exc:
+        logger.debug("[RUN] token refresh failed: %s", exc)
 
 
 async def _execute_run(rows: list, emit_fn):
@@ -227,6 +342,8 @@ async def _execute_run(rows: list, emit_fn):
     _run_state["error_msg"] = None
     _run_state["current_queries"] = []
     _run_state["generated_files"] = []
+    _run_state["tokens_run"] = 0
+    _run_state["cost_gbp_run"] = 0.0
 
     # Parallelism logic
     concurrency = int(os.environ.get("RESEARCH_PARALLEL_WORKERS", "2"))
@@ -236,18 +353,22 @@ async def _execute_run(rows: list, emit_fn):
         async with semaphore:
             tid, topic, category, sop_hint = row[0], row[1], row[2], row[3]
             depth = row[4] if len(row) > 4 else "standard"
-            
-            # Simple global state update (frontend will just show latest active task)
-            _run_state["current_topic"] = f"Parallel: {topic}"
+
+            # Expert Panel flag: sop_hint prefixed with "[EP]\n" by the UI
+            use_expert_panel = bool(sop_hint and sop_hint.startswith("[EP]"))
+            clean_hint = sop_hint[4:].strip() if use_expert_panel else sop_hint
+
+            _run_state["current_topic"] = topic
             _run_state["current_topic_id"] = tid
             _run_state["stage"] = None
             _run_state["source_count"] = 0
             _run_state["scrape_progress"] = ""
             _run_state["elapsed_seconds"] = 0
-            
+
             topic_start = time.time()
-            _run_log("info", f"Starting: {topic[:70]}")
-            
+            label = "[Expert Panel] " if use_expert_panel else ""
+            _run_log("info", f"{label}Starting: {topic[:70]}")
+
             try:
                 from db import get_conn
                 with get_conn() as conn:
@@ -255,20 +376,26 @@ async def _execute_run(rows: list, emit_fn):
                         cur.execute(
                             "UPDATE supply.research_topics SET status='running' WHERE id=%s", (tid,)
                         )
+
+                if depth == "thorough":
+                    await _run_topic_thorough(tid, topic, category, emit_fn, get_conn)
+                else:
+                    await do_research(
+                        topic=topic,
+                        category=category or "general",
+                        sop_hint=clean_hint,
+                        topic_id=tid,
+                        depth=depth or "standard",
+                        emit=emit_fn,
+                        expert_panel=use_expert_panel,
+                    )
                 
-                await do_research(
-                    topic=topic,
-                    category=category or "general",
-                    sop_hint=sop_hint,
-                    topic_id=tid,
-                    depth=depth or "standard",
-                    emit=emit_fn,
-                )
-                
+                _run_state["elapsed_seconds"] = round(time.time() - topic_start)
                 _run_state["elapsed_seconds"] = round(time.time() - topic_start)
                 _run_state["progress"] += 1
                 _run_log("done", f"Completed: {topic[:60]}")
                 logger.info("[RUN] Done %d/%d: %s", _run_state["progress"], _run_state["total"], topic[:60])
+                _refresh_token_state(tid)
                 
             except Exception as exc:
                 logger.error("[RUN] Failed topic %d: %s", tid, exc)
@@ -382,14 +509,14 @@ def project_page(request: Request, slug: str):
 
 
 @app.post("/p/{slug}/queue")
-def queue_research(request: Request, slug: str, topic: str = Form(""), category: str = Form("general"), sop_hint: str = Form("")):
+def queue_research(request: Request, slug: str, topic: str = Form(""), category: str = Form("general"), sop_hint: str = Form(""), depth: str = Form("standard")):
     user = get_session_user(request)
     if not user:
         return login_redirect()
     project = _get_project(slug)
-    if not project or not topic.strip():
+    if not topic.strip() or not project:
         return RedirectResponse(f"/p/{slug}", status_code=303)
-    _queue_topic(project["id"], topic.strip(), category, sop_hint.strip() or None)
+    _queue_topic(project["id"], topic.strip(), category, sop_hint.strip() or None, depth)
     return RedirectResponse(f"/p/{slug}", status_code=303)
 
 
@@ -461,7 +588,7 @@ def retry_topic(request: Request, slug: str, tid: int):
 
 
 @app.post("/p/{slug}/topic/{tid}/edit")
-def edit_topic(request: Request, slug: str, tid: int, topic: str = Form(""), category: str = Form("general"), sop_hint: str = Form("")):
+def edit_topic(request: Request, slug: str, tid: int, topic: str = Form(""), category: str = Form("general"), sop_hint: str = Form(""), depth: str = Form("standard")):
     user = get_session_user(request)
     if not user:
         return login_redirect()
@@ -469,8 +596,8 @@ def edit_topic(request: Request, slug: str, tid: int, topic: str = Form(""), cat
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE supply.research_topics SET topic=%s, category=%s, sop_hint=%s WHERE id=%s AND status='pending'",
-                    (topic.strip(), category, sop_hint.strip() or None, tid),
+                    "UPDATE supply.research_topics SET topic=%s, category=%s, sop_hint=%s, depth=%s WHERE id=%s AND status='pending'",
+                    (topic.strip(), category, sop_hint.strip() or None, depth, tid),
                 )
     accept = request.headers.get("accept", "")
     if "application/json" in accept:
@@ -615,6 +742,10 @@ async def run_stream(request: Request):
                 "scrape_progress": _run_state.get("scrape_progress", ""),
                 "elapsed_seconds": _run_state.get("elapsed_seconds", 0),
                 "error_msg": _run_state.get("error_msg"),
+                "tokens_run": _run_state.get("tokens_run", 0),
+                "cost_gbp_run": _run_state.get("cost_gbp_run", 0.0),
+                "tokens_today": _run_state.get("tokens_today", 0),
+                "cost_gbp_today": _run_state.get("cost_gbp_today", 0.0),
             }
             yield f"data: {json.dumps(state_evt)}\n\n"
             logs = _run_state["logs"]
@@ -638,6 +769,97 @@ def run_status():
     return JSONResponse(_run_state)
 
 
+# ── Mapmaker decompose ────────────────────────────────────────────────────────
+
+@app.post("/api/map")
+async def api_map(request: Request):
+    user = get_session_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad_request"}, status_code=400)
+    topic = (body.get("topic") or "").strip()
+    if not topic:
+        return JSONResponse({"error": "topic_required"}, status_code=400)
+    try:
+        from systemOS.agents.mapmaker import build_map
+        result = await build_map(topic)
+        return JSONResponse({
+            "topic":          result.topic,
+            "total_chapters": result.total_chapters,
+            "volumes":        result.volumes,
+        })
+    except Exception as exc:
+        logger.error("[MAP] build_map failed: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/p/{slug}/queue-chapters")
+async def queue_chapters(request: Request, slug: str):
+    user = get_session_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    project = _get_project(slug)
+    if not project:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad_request"}, status_code=400)
+    chapters = body.get("chapters", [])
+    queued = 0
+    for ch in chapters:
+        t = (ch.get("topic") or "").strip()
+        if t:
+            _queue_topic(
+                project["id"], t,
+                ch.get("category", "general"),
+                ch.get("sop_hint") or None,
+                ch.get("depth", "standard"),
+            )
+            queued += 1
+    return JSONResponse({"queued": queued})
+
+
+# ── Topic fetch (clone pre-fill) ──────────────────────────────────────────────
+
+@app.get("/api/topics/{tid}")
+def api_get_topic(request: Request, tid: int):
+    user = get_session_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, topic, category, sop_hint, depth FROM supply.research_topics WHERE id=%s",
+                (tid,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(dict(zip(["id", "topic", "category", "sop_hint", "depth"], row)))
+
+
+# ── Knowledge Ledger search ───────────────────────────────────────────────────
+
+@app.get("/api/search")
+async def knowledge_search(request: Request, q: str = "", project: str = ""):
+    user = get_session_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if not q.strip():
+        return JSONResponse({"results": []})
+    try:
+        from systemOS.services.shadow_storage import recall
+        results = await recall(q.strip(), project_slug=project or "general", n=6)
+        return JSONResponse({"results": results, "query": q})
+    except Exception as exc:
+        logger.warning("[SEARCH] Knowledge search failed: %s", exc)
+        return JSONResponse({"results": [], "error": "Knowledge search unavailable — is ChromaDB running?"})
+
+
 # ── Report viewer ──────────────────────────────────────────────────────────────
 
 @app.get("/report/{finding_id}", response_class=HTMLResponse)
@@ -650,7 +872,7 @@ def view_report(request: Request, finding_id: int):
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT f.report, f.report_html, f.model, f.sources, f.queries, f.output_file,
-                       f.created_at, t.topic, t.project_id
+                       f.created_at, t.topic, t.project_id, t.id AS topic_id
                 FROM supply.research_findings f
                 JOIN supply.research_topics t ON t.id = f.topic_id
                 WHERE f.id = %s
@@ -660,7 +882,7 @@ def view_report(request: Request, finding_id: int):
     if not row:
         return RedirectResponse("/library", status_code=303)
 
-    report_raw, report_html, model, sources, queries, output_file, created_at, topic, project_id = row
+    report_raw, report_html, model, sources, queries, output_file, created_at, topic, project_id, topic_id = row
     if not report_html:
         report_html = md.markdown(report_raw, extensions=["extra", "toc"])
 
@@ -676,6 +898,38 @@ def view_report(request: Request, finding_id: int):
                 if r:
                     project = dict(zip([d[0] for d in cur.description], r))
 
+    # Knowledge Ledger — drive URL, executive summary, section count
+    ledger = None
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT drive_url, executive_summary, section_count
+                    FROM supply.research_index
+                    WHERE topic_id = %s
+                    ORDER BY indexed_at DESC LIMIT 1
+                """, (topic_id,))
+                lr = cur.fetchone()
+                if lr:
+                    ledger = {"drive_url": lr[0], "executive_summary": lr[1], "section_count": lr[2]}
+    except Exception:
+        pass
+
+    # Token cost from llm_cost_by_topic view
+    token_cost = None
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT total_tokens, total_cost_gbp, call_count FROM supply.llm_cost_by_topic WHERE topic_id=%s",
+                    (topic_id,),
+                )
+                cr = cur.fetchone()
+                if cr:
+                    token_cost = {"tokens": int(cr[0]), "cost_gbp": float(cr[1]), "calls": int(cr[2])}
+    except Exception:
+        pass
+
     ctx = _render_ctx(request, {
         "active_project": project["slug"] if project else None,
         "topic": topic,
@@ -687,6 +941,8 @@ def view_report(request: Request, finding_id: int):
         "created_at": created_at,
         "project": project,
         "finding_id": finding_id,
+        "ledger": ledger,
+        "token_cost": token_cost,
     })
     return templates.TemplateResponse("report.html", ctx)
 
@@ -713,6 +969,115 @@ async def llm_status():
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "researchOS", "version": "2.0.0"}
+
+
+# ── Admin / Intel Hub ─────────────────────────────────────────────────────────
+
+def _admin_today_stats() -> dict:
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COALESCE(SUM(total_tokens),0),
+                           COALESCE(SUM(cost_gbp),0),
+                           COUNT(*)
+                    FROM supply.llm_call_log
+                    WHERE DATE(called_at AT TIME ZONE 'Europe/London') = CURRENT_DATE
+                """)
+                row = cur.fetchone()
+                return {"tokens": int(row[0]), "cost_gbp": float(row[1]), "calls": int(row[2])}
+    except Exception:
+        return {"tokens": 0, "cost_gbp": 0.0, "calls": 0}
+
+
+def _admin_daily_stats(days: int = 7) -> list[dict]:
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DATE(called_at AT TIME ZONE 'Europe/London') AS day,
+                           SUM(total_tokens) AS tokens,
+                           SUM(cost_gbp)     AS cost_gbp,
+                           COUNT(*)          AS calls
+                    FROM supply.llm_call_log
+                    WHERE called_at >= NOW() - INTERVAL '%s days'
+                    GROUP BY 1 ORDER BY 1
+                """ % days)
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def _admin_topic_costs(limit: int = 10) -> list[dict]:
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT topic_id, topic, status,
+                           total_tokens, total_cost_gbp, call_count, last_call_at
+                    FROM supply.llm_cost_by_topic
+                    LIMIT %s
+                """, (limit,))
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def _admin_recent_calls(limit: int = 25) -> list[dict]:
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT called_at, call_type, model, backend,
+                           input_tokens, output_tokens, total_tokens,
+                           cost_gbp, duration_ms, fast
+                    FROM supply.llm_call_log
+                    ORDER BY called_at DESC LIMIT %s
+                """, (limit,))
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request):
+    user = get_session_user(request)
+    if not user:
+        return login_redirect("/admin")
+    daily = _admin_daily_stats(7)
+    ctx = _render_ctx(request, {
+        "active_route": "admin",
+        "today": _admin_today_stats(),
+        "daily": daily,
+        "daily_labels": [str(d["day"]) for d in daily],
+        "daily_tokens": [int(d["tokens"]) for d in daily],
+        "daily_cost":   [float(d["cost_gbp"]) for d in daily],
+        "topic_costs":  _admin_topic_costs(),
+        "recent_calls": _admin_recent_calls(),
+        "ollama_model": os.getenv("OLLAMA_MODEL", "—"),
+        "ollama_url":   os.getenv("OLLAMA_URL", ""),
+        "vram_total_gb": 64,  # M1 Max unified memory
+    })
+    return templates.TemplateResponse("admin.html", ctx)
+
+
+@app.get("/api/admin/ollama-ps")
+async def admin_ollama_ps():
+    ollama_url = os.getenv("OLLAMA_URL", "")
+    if not ollama_url:
+        return JSONResponse({"models": []})
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{ollama_url}/api/ps")
+            if r.status_code == 200:
+                return JSONResponse(r.json())
+    except Exception:
+        pass
+    return JSONResponse({"models": [], "error": "unreachable"})
 
 
 # ── Vendor Intelligence ────────────────────────────────────────────────────────
@@ -763,9 +1128,42 @@ def vendors_list(request: Request):
         "active_route": "vendors",
         "jobs": jobs,
         "pending_count": sum(1 for j in jobs if j["status"] == "pending"),
-        "done_count": sum(1 for j in jobs if j["status"] == "done"),
+        "done_count":    sum(1 for j in jobs if j["status"] == "done"),
+        "error_count":   sum(1 for j in jobs if j["status"] == "error"),
+        "running_count": sum(1 for j in jobs if j["status"] == "running"),
     })
     return templates.TemplateResponse("vendors.html", ctx)
+
+
+@app.post("/vendors/run-all")
+async def run_all_vendors(request: Request, background_tasks: BackgroundTasks):
+    user = get_session_user(request)
+    if not user:
+        return login_redirect()
+    if _run_state["running"]:
+        return RedirectResponse("/vendors", status_code=303)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM supply.vendor_scrape_jobs WHERE status IN ('pending','error') ORDER BY created_at"
+            )
+            job_ids = [r[0] for r in cur.fetchall()]
+
+    async def _run_all_vendor_jobs():
+        from agents.vendor_agent import run_vendor_agent
+        for job_id in job_ids:
+            if not _run_state["running"] or _run_state.get("error_msg"):
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE supply.vendor_scrape_jobs SET status='pending' WHERE id=%s AND status='error'",
+                            (job_id,),
+                        )
+            await run_vendor_agent(job_id, _make_emit())
+
+    if job_ids:
+        background_tasks.add_task(_run_all_vendor_jobs)
+    return RedirectResponse("/vendors", status_code=303)
 
 
 @app.post("/vendors/queue")
@@ -847,6 +1245,9 @@ async def run_vendor_job(request: Request, job_id: int, background_tasks: Backgr
 
     from agents.vendor_agent import run_vendor_agent
     background_tasks.add_task(run_vendor_agent, job_id, _make_emit())
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        return JSONResponse({"started": True, "job_id": job_id})
     return RedirectResponse("/vendors", status_code=303)
 
 

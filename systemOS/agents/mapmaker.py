@@ -86,7 +86,7 @@ async def build_map(
     Returns a MapResult with volumes and chapters.
     """
     if model is None:
-        model = get_model("research")["model"]
+        model = get_model("mapmaker")["model"]
 
     from systemOS.services.sop_assembler import assemble_sop
     sop = assemble_sop(task_type="research", module="mapmaker", workspace="")
@@ -102,12 +102,16 @@ async def build_map(
         messages=[{"role": "user", "content": prompt}],
         system=sop,
         fast=False,
-        max_tokens=2000,
         model=model,
     )
 
-    # Strip accidental markdown fences
-    raw_clean = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip(), flags=re.MULTILINE).strip()
+    # Extract JSON object even if there is preamble or postamble
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if match:
+        raw_clean = match.group(0)
+    else:
+        # Fallback to the old strip method just in case
+        raw_clean = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip(), flags=re.MULTILINE).strip()
 
     try:
         data = json.loads(raw_clean)

@@ -11,6 +11,142 @@ Read this before touching any project in this directory.
 
 NNL is the organisation that uses all of this. NNL's business domains (supply chain, retail, fragrance, website) are contexts that appear *inside* each service — they are not reasons to create separate services.
 
+A new OS is justified when you need a new *capability* (research, procurement operations, health tracking). A new NNL business domain is just a project/tag inside the right existing OS.
+
+---
+
+## Vocabulary (use these consistently)
+
+| Term | Meaning |
+|------|---------|
+| **OS service** | A running webapp or background service. Lives in its own directory, has its own venv, port, DB schema. |
+| **module** | A feature within an OS (e.g. Vendor Intelligence inside researchOS). Not a standalone service. |
+| **NNL domain** | A business area of NNL: supply chain, retail, fragrance, website. This is a tag/project *inside* a service. |
+| **systemOS** | A **code library only** — no UI, no users, no running process. All other services import from it. |
+| **codingOS** | Intelligence/instruction layer for the AI coding agent. No UI — VS Code / Claude Code IS the interface. |
+
+---
+
+## Ecosystem map
+
+```
+server-services/
+│
+├── systemOS/               ← Shared code library. Never a standalone UI or service.
+│     mcp/browser.py        ← Crawl4AI scraper: scrape(), scrape_many()
+│     mcp/search.py         ← SearXNG client: run_search()
+│     mcp/terminal.py       ← Sandbox runner: run_ruff(), run_pytest(), run_python()
+│     llm.py                ← Ollama/Anthropic: complete(), complete_ex()
+│     config/models.py      ← Model catalogue: get_model("code"|"fast"|"precise")
+│     agents/coder.py       ← Code→lint→test→fix self-correction loop
+│     agents/skill_builder.py ← Dynamic tool acquisition from API docs
+│     agents/researcher.py  ← Research pipeline
+│     agents/mapmaker.py    ← Topic decomposition
+│     services/             ← Task queue, orchestrator, router, expert panel
+│
+├── researchOS/  port 4001  ← Research for ALL NNL domains
+│     Mode 1: Topic research (search → scrape → LLM synthesis → report)
+│     Mode 2: Vendor Intelligence (agentic scraper — LLM drives tool calls)
+│
+├── prismaOS/    port 3000  ← Live multi-business AI ops (Discord bot + web UI)
+│     Workspaces: candles, cars, property, nursing_massage, food_brand
+│     Orchestrator delegates to systemOS agents for code/research/skill tasks
+│
+├── fitOS/       port 4002  ← Personal health OS (nutrition, training, biomarkers, planner)
+│     DB schema: health.* in systemos-postgres
+│     Stack: FastAPI + Jinja2 + Chart.js + Forest Cream design system
+│
+├── nnlos/       port 4000  ← NNL procurement ops (MRP Easy mirror, POs, replenishment)
+├── vendorOS/               ← NNL vendor strategy (audit, samples, risk, disposal)
+│
+└── codingOS/               ← Coding agent intelligence layer
+      CLAUDE.md             ← Master instruction set for the coding agent
+      AGENTS.md             ← Architecture reference for AI assistants
+```
+
+---
+
+## Decision guide: where does new work go?
+
+| What you're building | Where it goes |
+|---------------------|---------------|
+| Research on any NNL topic | researchOS |
+| Vendor scraping / profiling | researchOS — Vendor Intelligence module |
+| Procurement operations, PO tracking | nnlos |
+| Vendor strategy, sample tracking, risk | vendorOS |
+| Health/fitness tracking | fitOS |
+| Shared scraping/search/LLM tool | systemOS |
+| New coding agent capability | systemOS/agents/ |
+| Coding agent instructions/context | codingOS/ |
+
+---
+
+## Import pattern (all projects use this)
+
+```python
+# Bootstrap in any project's main.py:
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))           # own project root
+sys.path.insert(0, str(Path(__file__).parent.parent))    # server-services/ → systemOS importable
+
+# Shared tools:
+from systemOS.mcp.browser import scrape, scrape_many
+from systemOS.mcp.search import run_search
+from systemOS.llm import complete, complete_ex
+from systemOS.agents.coder import code_task, quick_code
+from systemOS.agents.skill_builder import acquire_skill
+```
+
+---
+
+## Infrastructure
+
+| Resource | Detail |
+|----------|--------|
+| Postgres | `systemos` DB, port **5433**, container `systemos-postgres`, user `daniel` |
+| SearXNG | `http://localhost:8080` — must be running for any research task |
+| Ollama | `http://100.76.139.41:11434` — MacBook Pro M1 Max via Tailscale |
+| Default model | `gemma4:26b` (coding: `qwen2.5-coder:32b` if available) |
+| Anthropic | Via `ANTHROPIC_API_KEY` in each project's `.env` |
+| researchOS | Port 4001 |
+| prismaOS web | Port 3000, systemd: `prisma-web` |
+| nnlos web | Port 4000 |
+| fitOS | Port 4002 |
+
+---
+
+## DB schema ownership
+
+| Schema | Owner |
+|--------|-------|
+| `supply.*` | researchOS |
+| `health.*` | fitOS |
+| `nnlos.*` | nnlos |
+| `vendor.*` | vendorOS |
+| core tables (tasks, users, audit_log) | systemOS — `db/schema_core.sql` |
+
+---
+
+## Coding conventions (applies across all projects)
+
+- **Python** — async everywhere (`asyncio`), type hints encouraged, `logger = logging.getLogger(__name__)`
+- **No `print()` in production** — use `logger.info/warning/error`
+- **No hardcoded secrets** — all credentials in `.env`, loaded with `python-dotenv`
+- **DB changes** — always update the project's `db/schema.sql` first
+- **New dependencies** — always add to `requirements.txt`
+- **Error handling** — every agent wraps its body in `try/except`; never leave a task stuck in `running`
+- **systemOS is read-only for projects** — projects import from it; they never modify it unless specifically improving the shared tool
+
+
+---
+
+## Mental model
+
+**OS services are grouped by what they DO, not who they're for.**
+
+NNL is the organisation that uses all of this. NNL's business domains (supply chain, retail, fragrance, website) are contexts that appear *inside* each service — they are not reasons to create separate services.
+
 A new OS is justified when you need a new *capability* (research, procurement operations, content management). A new NNL business domain is just a project/tag inside the right existing OS.
 
 ---
@@ -103,7 +239,8 @@ from systemOS.config.depth import get as get_depth
 | Ollama | `http://100.76.139.41:11434` — Mac M1 Max via Tailscale. Model: `gemma4:26b` |
 | Anthropic | Via `ANTHROPIC_API_KEY` in each project's `.env` |
 | researchOS | Port 4001 |
-| prismaOS web | Port 4000, systemd: `prisma-web` |
+| prismaOS web | Port 3000, systemd: `prisma-web` |
+| nnlos web | Port 4000 |
 
 ---
 

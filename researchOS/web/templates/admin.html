@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Admin — ResearchOS{% endblock %}
+{% block header_breadcrumb %}<span>Admin</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">⚙️ Intelligence Hub</h1>
+  <p class="page-subtitle">Token usage, model load, and cost tracking for the research engine.</p>
+</div>
+
+{# ── Row 1: Today's stats ──────────────────────────────────────── #}
+<div class="stat-row mb-24">
+  <div class="stat-card">
+    <div class="stat-label">Tokens today</div>
+    <div class="stat-number">{{ "{:,}".format(today.tokens) }}</div>
+    <div class="stat-trend">{{ today.calls }} LLM call{% if today.calls != 1 %}s{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Cost today (GBP)</div>
+    <div class="stat-number">£{{ "%.4f"|format(today.cost_gbp) }}</div>
+    <div class="stat-trend">Anthropic Haiku/Sonnet pricing</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Model</div>
+    <div class="stat-number" style="font-size:16px; font-family:'JetBrains Mono',monospace;">{{ ollama_model }}</div>
+    <div class="stat-trend">via Ollama{% if ollama_url %} @ {{ ollama_url.replace('http://','') }}{% endif %}</div>
+  </div>
+  <div class="stat-card" id="vram-card">
+    <div class="stat-label">VRAM / Model Load</div>
+    <div class="stat-number" id="vram-loaded" style="font-size:14px; color:var(--c-text-muted);">checking…</div>
+    <div class="stat-trend" id="vram-bar-label">MacBook M1 Max — {{ vram_total_gb }}GB unified</div>
+  </div>
+</div>
+
+{# ── Row 2: VRAM gauge + 7-day chart ──────────────────────────── #}
+<div class="admin-row mb-24">
+
+  <div class="card admin-vram-card">
+    <div class="admin-card-header">Active Models (Ollama)</div>
+    <div id="vram-models">
+      <div style="color:var(--c-text-muted);font-size:13px;padding:8px 0;">Fetching model state…</div>
+    </div>
+  </div>
+
+  <div class="card admin-chart-card">
+    <div class="admin-card-header">7-day token usage</div>
+    <canvas id="daily-chart" height="120"></canvas>
+  </div>
+
+</div>
+
+{# ── Row 3: Topic cost breakdown ──────────────────────────────── #}
+{% if topic_costs %}
+<div class="card mb-24" style="padding:0; overflow:hidden;">
+  <div class="admin-card-header" style="padding:14px 20px;">Cost by topic</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Topic</th>
+        <th>Status</th>
+        <th>Tokens</th>
+        <th>Cost (£)</th>
+        <th>Calls</th>
+        <th>Last run</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in topic_costs %}
+      <tr>
+        <td class="td-primary" style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ t.topic }}">{{ t.topic or '—' }}</td>
+        <td><span class="badge badge-{{ t.status or 'pending' }}">{{ t.status or '—' }}</span></td>
+        <td class="td-mono">{{ "{:,}".format(t.total_tokens or 0) }}</td>
+        <td class="td-mono">£{{ "%.4f"|format(t.total_cost_gbp or 0) }}</td>
+        <td class="td-mono">{{ t.call_count }}</td>
+        <td class="td-mono" style="font-size:12px; color:var(--c-text-muted);">
+          {{ t.last_call_at.strftime('%d %b %H:%M') if t.last_call_at else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── Row 4: Recent LLM calls ──────────────────────────────────── #}
+{% if recent_calls %}
+<div class="card" style="padding:0; overflow:hidden;">
+  <div class="admin-card-header" style="padding:14px 20px;">Recent LLM calls</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Model</th>
+        <th>Backend</th>
+        <th>In</th>
+        <th>Out</th>
+        <th>Total</th>
+        <th>Cost (£)</th>
+        <th>ms</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in recent_calls %}
+      <tr>
+        <td class="td-mono" style="font-size:11px; color:var(--c-text-muted);">
+          {{ c.called_at.strftime('%H:%M:%S') if c.called_at else '—' }}
+        </td>
+        <td style="font-size:12px;">{{ c.call_type }}</td>
+        <td class="td-mono" style="font-size:11px;">{{ c.model }}</td>
+        <td style="font-size:11px; color:var(--c-text-muted);">{{ c.backend }}</td>
+        <td class="td-mono">{{ "{:,}".format(c.input_tokens or 0) }}</td>
+        <td class="td-mono">{{ "{:,}".format(c.output_tokens or 0) }}</td>
+        <td class="td-mono" style="font-weight:500;">{{ "{:,}".format(c.total_tokens or 0) }}</td>
+        <td class="td-mono">£{{ "%.5f"|format(c.cost_gbp or 0) }}</td>
+        <td class="td-mono" style="color:var(--c-text-muted);">{{ c.duration_ms or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div style="text-align:center; padding:32px; color:var(--c-text-muted); font-size:13px;">
+    No LLM calls logged yet. Run a research topic to start tracking.
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── VRAM gauge ──────────────────────────────────────────────────
+const VRAM_TOTAL_GB = {{ vram_total_gb }};
+
+fetch('/api/admin/ollama-ps')
+  .then(r => r.json())
+  .then(data => {
+    const models = data.models || [];
+    const loaded = document.getElementById('vram-loaded');
+    const container = document.getElementById('vram-models');
+
+    if (!models.length) {
+      loaded.textContent = 'No models loaded';
+      container.innerHTML = '<div style="color:var(--c-text-muted);font-size:13px;padding:8px 0;">No models currently loaded in Ollama.</div>';
+      return;
+    }
+
+    const totalVramBytes = models.reduce((s, m) => s + (m.size_vram || m.size || 0), 0);
+    const usedGB = (totalVramBytes / 1e9).toFixed(1);
+    const pct = Math.min(100, Math.round(totalVramBytes / (VRAM_TOTAL_GB * 1e9) * 100));
+
+    loaded.textContent = `${usedGB} GB / ${VRAM_TOTAL_GB} GB used`;
+
+    let html = '';
+    for (const m of models) {
+      const gb = ((m.size_vram || m.size || 0) / 1e9).toFixed(1);
+      const mp = Math.min(100, Math.round((m.size_vram || m.size || 0) / (VRAM_TOTAL_GB * 1e9) * 100));
+      html += `
+        <div class="vram-model">
+          <div class="vram-model-name">${m.name || m.model}</div>
+          <div class="vram-model-bar-wrap">
+            <div class="vram-model-bar" style="width:${mp}%"></div>
+          </div>
+          <div class="vram-model-size">${gb} GB</div>
+        </div>`;
+    }
+    // Total bar
+    html += `
+      <div class="vram-total-bar-wrap" style="margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--c-text-muted);margin-bottom:4px;">
+          <span>Total VRAM load</span><span>${pct}%</span>
+        </div>
+        <div class="vram-bg"><div class="vram-fill" style="width:${pct}%;background:${pct>80?'var(--c-error)':pct>50?'var(--c-warning)':'var(--c-success)'}"></div></div>
+      </div>`;
+    container.innerHTML = html;
+  })
+  .catch(() => {
+    document.getElementById('vram-loaded').textContent = 'Unreachable';
+  });
+
+// ── 7-day token chart ───────────────────────────────────────────
+const labels = {{ daily_labels | tojson }};
+const tokensData = {{ daily_tokens | tojson }};
+const costData = {{ daily_cost | tojson }};
+
+const ctx = document.getElementById('daily-chart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: labels.map(l => {
+      const d = new Date(l);
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }),
+    datasets: [{
+      label: 'Tokens',
+      data: tokensData,
+      backgroundColor: 'rgba(191,168,128,0.6)',
+      borderColor: 'rgba(191,168,128,1)',
+      borderWidth: 1,
+      borderRadius: 4,
+      yAxisID: 'y',
+    }, {
+      label: 'Cost (£)',
+      data: costData,
+      type: 'line',
+      borderColor: 'rgba(58,107,74,0.8)',
+      backgroundColor: 'transparent',
+      pointBackgroundColor: 'rgba(58,107,74,0.8)',
+      tension: 0.3,
+      yAxisID: 'y1',
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y:  { ticks: { font: { size: 10 }, color: '#6B8578' }, grid: { color: 'rgba(0,0,0,0.04)' } },
+      y1: { position: 'right', ticks: { font: { size: 10 }, color: '#3A6B4A', callback: v => '£' + v.toFixed(4) }, grid: { display: false } },
+      x:  { ticks: { font: { size: 10 }, color: '#6B8578' }, grid: { display: false } },
+    }
+  }
+});
+</script>
+{% endblock %}

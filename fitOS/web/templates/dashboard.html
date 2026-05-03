@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Vitals — HealthOS{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Vitals</h1>
+  <p class="page-subtitle">Body weight and biometric tracking</p>
+</div>
+
+<!-- Stats strip -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Latest</div>
+    <div class="stat-value" id="stat-latest">
+      {% if latest %}{{ latest.value }}{% else %}—{% endif %}
+    </div>
+    <div class="stat-unit">{% if latest %}{{ latest.unit }}{% else %}no data yet{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">30-day avg</div>
+    <div class="stat-value">{% if stats.avg %}{{ stats.avg }}{% else %}—{% endif %}</div>
+    <div class="stat-unit">{% if latest %}{{ latest.unit }}{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">30-day range</div>
+    <div class="stat-value" style="font-size:18px;">
+      {% if stats.min %}{{ stats.min }} – {{ stats.max }}{% else %}—{% endif %}
+    </div>
+    <div class="stat-unit">{% if stats.count %}{{ stats.count }} entries{% endif %}</div>
+  </div>
+</div>
+
+<!-- Main grid: chart left, log card right -->
+<div class="main-grid">
+
+  <!-- Weight chart -->
+  <div class="card">
+    <div class="card-title">Weight — last 30 days</div>
+    <div class="chart-wrap">
+      <canvas id="weightChart"></canvas>
+      <div class="chart-empty" id="chart-empty" style="display:none;">
+        No data yet — log your first entry to see the chart.
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: log card + recent entries -->
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- Log weight card -->
+    <div class="card">
+      <div class="card-title">Log Weight</div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <div class="form-group" style="flex:2;">
+          <label class="form-label">Weight</label>
+          <input class="form-input" type="number" id="input-value"
+                 step="0.1" min="20" max="300" placeholder="75.4" />
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Unit</label>
+          <select class="form-select" id="input-unit">
+            <option value="kg" selected>kg</option>
+            <option value="lbs">lbs</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note (optional)</label>
+        <input class="form-input" type="text" id="input-note" placeholder="Morning, post-workout…" />
+      </div>
+      <button class="btn btn-primary btn-full" id="save-btn" onclick="logWeight()">
+        Save
+      </button>
+    </div>
+
+    <!-- Recent entries -->
+    <div class="card">
+      <div class="card-title">Recent entries</div>
+      <div class="log-list" id="log-list">
+        <div style="font-size:12.5px;color:var(--c-text-muted);text-align:center;padding:12px 0;">
+          Loading…
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Placeholder module cards (spec 2.1) -->
+<div class="placeholder-grid">
+  <div class="placeholder-card">
+    <div class="placeholder-icon">⚡</div>
+    <div class="placeholder-title">Activity</div>
+    <div class="placeholder-desc">Workout logging, progressive overload, Garmin sync</div>
+  </div>
+  <div class="placeholder-card">
+    <div class="placeholder-icon">🥗</div>
+    <div class="placeholder-title">Nutrition</div>
+    <div class="placeholder-desc">Meal logging, macro tracking, Open Food Facts barcode scan</div>
+  </div>
+  <div class="placeholder-card">
+    <div class="placeholder-icon">🌙</div>
+    <div class="placeholder-title">Sleep & Recovery</div>
+    <div class="placeholder-desc">HRV, resting heart rate, Fitbit / Garmin sync</div>
+  </div>
+  <div class="placeholder-card">
+    <div class="placeholder-icon">✅</div>
+    <div class="placeholder-title">Habits</div>
+    <div class="placeholder-desc">Contribution calendar, streak tracking, quantitative goals</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ── Chart setup ──────────────────────────────────────────────
+let weightChart = null;
+
+const CHART_OPTS = {
+  type: 'line',
+  data: { labels: [], datasets: [{
+    label: 'Weight',
+    data: [],
+    borderColor: '#8C7455',
+    backgroundColor: 'rgba(191,168,128,0.10)',
+    borderWidth: 2,
+    pointRadius: 3,
+    pointBackgroundColor: '#8C7455',
+    tension: 0.3,
+    fill: true,
+  }]},
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.parsed.y} ${window._unit || 'kg'}`,
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(226,217,196,0.4)' },
+        ticks: { font: { size: 11 }, color: '#6B8578', maxTicksLimit: 8 },
+      },
+      y: {
+        grid: { color: 'rgba(226,217,196,0.4)' },
+        ticks: { font: { size: 11 }, color: '#6B8578' },
+      }
+    }
+  }
+};
+
+function initChart() {
+  const ctx = document.getElementById('weightChart').getContext('2d');
+  weightChart = new Chart(ctx, CHART_OPTS);
+}
+
+function renderChart(history) {
+  const empty = document.getElementById('chart-empty');
+  if (!history.length) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  window._unit = history[0]?.unit || 'kg';
+  weightChart.data.labels = history.map(r => {
+    const d = new Date(r.created_at);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  });
+  weightChart.data.datasets[0].data = history.map(r => r.value);
+  weightChart.update();
+}
+
+// ── Recent entries list ──────────────────────────────────────
+function renderList(history) {
+  const list = document.getElementById('log-list');
+  const recent = [...history].reverse().slice(0, 10);
+  if (!recent.length) {
+    list.innerHTML = '<div style="font-size:12.5px;color:var(--c-text-muted);text-align:center;padding:12px 0;">No entries yet.</div>';
+    return;
+  }
+  list.innerHTML = recent.map(r => {
+    const d = new Date(r.created_at);
+    const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="log-item">
+      <div class="log-value">${r.value}<span>${r.unit}</span></div>
+      <div class="log-date">${date} · ${time}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Fetch history ────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/metrics/history?metric_type=weight&days=30');
+    const data = await res.json();
+    renderChart(data);
+    renderList(data);
+
+    // Update "latest" stat live
+    if (data.length) {
+      const last = data[data.length - 1];
+      document.getElementById('stat-latest').textContent = last.value;
+    }
+  } catch (e) {
+    console.error('Failed to load history', e);
+  }
+}
+
+// ── Log weight ───────────────────────────────────────────────
+async function logWeight() {
+  const btn   = document.getElementById('save-btn');
+  const value = parseFloat(document.getElementById('input-value').value);
+  const unit  = document.getElementById('input-unit').value;
+  const note  = document.getElementById('input-note').value.trim();
+
+  if (!value || isNaN(value) || value <= 0) {
+    showToast('Enter a valid weight', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const res = await fetch('/api/metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metric_type: 'weight', value, unit, note: note || null }),
+    });
+
+    if (res.status === 201) {
+      btn.textContent = '✓ Saved';
+      showToast(`Logged ${value} ${unit}`);
+      document.getElementById('input-value').value = '';
+      document.getElementById('input-note').value = '';
+      await loadHistory();
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }, 1500);
+    } else {
+      const err = await res.json();
+      showToast(err.error || 'Error saving', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+// Allow Enter key in weight input
+document.getElementById('input-value').addEventListener('keydown', e => {
+  if (e.key === 'Enter') logWeight();
+});
+
+// ── Init ─────────────────────────────────────────────────────
+initChart();
+loadHistory();
+</script>
+{% endblock %}

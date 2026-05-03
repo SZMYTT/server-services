@@ -1,136 +1,494 @@
 {% extends "base.html" %}
-
 {% block title %}Vendor Intelligence — ResearchOS{% endblock %}
 {% block header_breadcrumb %}<span>Vendor Intelligence</span>{% endblock %}
 
 {% block content %}
+
 <div class="page-header">
-  <div class="breadcrumb"><a href="/library">Library</a><span class="breadcrumb-sep">/</span><span>Vendors</span></div>
-  <h1 class="page-title">Vendor Intelligence</h1>
-  <p class="page-subtitle">{{ done_count }} profile{{ 's' if done_count != 1 else '' }} scraped{% if pending_count %}, {{ pending_count }} pending{% endif %}</p>
-</div>
-
-<!-- Add vendor form -->
-<div class="card" style="margin-bottom:24px;">
-  <div style="font-size:13px; font-weight:600; color:var(--c-text-muted); letter-spacing:0.7px; text-transform:uppercase; margin-bottom:14px;">Queue a vendor scrape</div>
-  <form method="POST" action="/vendors/queue">
-    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Vendor URL *</label>
-        <input class="form-input" name="vendor_url" placeholder="https://supplier.co.uk" required />
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Vendor Name</label>
-        <input class="form-input" name="vendor_name" placeholder="e.g. Carvansons" />
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Products to find</label>
-        <input class="form-input" name="skus" placeholder="coco apricot wax, 100ml glass bottle" title="Enter product names or descriptions as the supplier knows them — not your internal NNL codes" />
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Category</label>
-        <select class="form-input" name="category">
-          <option value="">— select —</option>
-          <option value="raw-fragrance">raw-fragrance</option>
-          <option value="raw-wax">raw-wax</option>
-          <option value="raw-wick">raw-wick</option>
-          <option value="raw-ingredient">raw-ingredient</option>
-          <option value="packaging-glass">packaging-glass</option>
-          <option value="packaging-closure">packaging-closure</option>
-          <option value="packaging-carton">packaging-carton</option>
-          <option value="labels">labels</option>
-          <option value="third-party-finished">third-party-finished</option>
-          <option value="sundry">sundry</option>
-          <option value="services">services</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Depth</label>
-        <select class="form-input" name="depth">
-          {% for key, label, mins in depth_choices %}
-          <option value="{{ key }}" {% if key == 'standard' %}selected{% endif %}>{{ label }} (~{{ mins }}m)</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-primary">Add to queue</button>
+  <div class="breadcrumb">
+    <a href="/library">Library</a><span class="breadcrumb-sep">/</span><span>Vendor Intelligence</span>
+  </div>
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <h1 class="page-title">🏭 Vendor Intelligence</h1>
+      <p class="page-subtitle">Agentic supplier scraper — MOQs, pricing, lead times, and risk flags.</p>
     </div>
-  </form>
-  <p style="margin-top:10px; font-size:12px; color:var(--c-text-muted);">
-    <strong>Products to find:</strong> enter what the supplier calls the product — e.g. "coco apricot wax", "30cl amber jar". Not your internal NNL A0 codes. The scraper searches these terms on the supplier's site and uses AI to pick the best match.
-  </p>
+    <div style="display:flex; gap:8px; flex-shrink:0; align-items:center;">
+      {% if pending_count > 0 %}
+      <form method="POST" action="/vendors/run-all">
+        <button type="submit" class="btn btn-gold">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run {{ pending_count }} pending
+        </button>
+      </form>
+      {% endif %}
+      <button class="btn btn-primary" onclick="openModal('modal-new-vendor')">+ Queue vendor</button>
+    </div>
+  </div>
 </div>
 
-<!-- Jobs list -->
-{% if jobs %}
-<table style="width:100%; border-collapse:collapse; font-size:13.5px;">
-  <thead>
-    <tr style="border-bottom:2px solid var(--c-border); text-align:left;">
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Vendor</th>
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Category</th>
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Products</th>
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Depth</th>
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Status</th>
-      <th style="padding:8px 12px; color:var(--c-text-muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.6px;">Added</th>
-      <th style="padding:8px 4px;"></th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for job in jobs %}
-    <tr style="border-bottom:1px solid var(--c-border);">
-      <td style="padding:10px 12px;">
-        {% if job.profile_id %}
-          <a href="/vendor/{{ job.profile_id }}" style="font-weight:600; text-decoration:none; color:var(--c-accent);">
-            {{ job.vendor_name or job.vendor_url }}
-          </a>
-        {% else %}
-          <span style="font-weight:600;">{{ job.vendor_name or job.vendor_url }}</span>
-        {% endif %}
-        <div style="font-size:11.5px; color:var(--c-text-muted); margin-top:2px;">{{ job.vendor_url }}</div>
-      </td>
-      <td style="padding:10px 12px; color:var(--c-text-muted);">{{ job.category or '—' }}</td>
-      <td style="padding:10px 12px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--c-text-muted);">
-        {% if job.skus %}
-          {{ job.skus | tojson | replace('"','') | replace('[','') | replace(']','') }}
-        {% else %}—{% endif %}
-      </td>
-      <td style="padding:10px 12px; font-size:12px; color:var(--c-text-muted);">{{ job.depth or 'standard' }}</td>
-      <td style="padding:10px 12px;">
-        {% if job.status == 'done' %}
-          <span class="badge badge-done">done</span>
-        {% elif job.status == 'pending' %}
-          <span class="badge badge-pending">pending</span>
-        {% elif job.status == 'running' %}
-          <span class="badge" style="background:var(--c-info-bg);color:var(--c-info);">running</span>
-        {% else %}
-          <span class="badge" style="background:var(--c-error-bg);color:var(--c-error);">error</span>
-        {% endif %}
-      </td>
-      <td style="padding:10px 12px; color:var(--c-text-muted); font-size:12px; white-space:nowrap;">
-        {{ job.created_at.strftime('%d/%m %H:%M') if job.created_at else '—' }}
-      </td>
-      <td style="padding:10px 4px; text-align:right; white-space:nowrap; display:flex; gap:6px; justify-content:flex-end; align-items:center;">
-        {% if job.profile_id %}
-          <a href="/vendor/{{ job.profile_id }}" class="btn btn-sm btn-secondary">View</a>
-        {% endif %}
-        {% if job.status in ('pending', 'error') %}
-          <form method="POST" action="/vendors/{{ job.id }}/run" style="display:inline;">
-            <button type="submit" class="btn btn-sm btn-gold">▶ Run</button>
-          </form>
-        {% elif job.status == 'running' %}
-          <span style="font-size:12px; color:var(--c-text-muted);">running…</span>
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-
-{% else %}
-<div class="card" style="text-align:center; padding:48px 20px;">
-  <div style="font-size:40px; margin-bottom:16px;">🏭</div>
-  <h2 style="font-size:18px; margin-bottom:8px;">No vendor profiles yet</h2>
-  <p style="color:var(--c-text-muted);">Queue a vendor above, then run the Mac scraper to generate profiles.</p>
+<!-- Stats -->
+<div class="stat-row" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-label">Total jobs</div>
+    <div class="stat-number">{{ jobs | length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Profiles done</div>
+    <div class="stat-number" style="{% if done_count > 0 %}color:var(--c-success){% endif %}">{{ done_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Pending</div>
+    <div class="stat-number" id="stat-pending" style="{% if pending_count > 0 %}color:var(--c-gold-dark){% endif %}">{{ pending_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Errors</div>
+    <div class="stat-number" style="{% if error_count > 0 %}color:var(--c-error){% endif %}">{{ error_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Running</div>
+    <div class="stat-number" id="stat-running" style="{% if running_count > 0 %}color:var(--c-info){% endif %}">{{ running_count }}</div>
+  </div>
 </div>
-{% endif %}
 
+<!-- Two-column layout (same as project.html) -->
+<div class="project-layout">
+
+  <!-- ── Queue panel ──────────────────────────────────────────── -->
+  <div class="queue-card">
+    <div class="queue-card-header">
+      <div class="queue-card-title-row">
+        <span class="queue-card-title">Vendor Queue</span>
+        <span class="queue-card-count">{{ jobs | length }} vendor{% if jobs | length != 1 %}s{% endif %}</span>
+      </div>
+      <div class="qtabs">
+        <a class="qtab active" data-filter="all"     onclick="filterQ('all');return false;">All ({{ jobs | length }})</a>
+        <a class="qtab"        data-filter="pending" onclick="filterQ('pending');return false;">Pending ({{ pending_count }})</a>
+        <a class="qtab"        data-filter="done"    onclick="filterQ('done');return false;">Done ({{ done_count }})</a>
+        {% if error_count > 0 %}<a class="qtab" data-filter="error" onclick="filterQ('error');return false;">Errors ({{ error_count }})</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="queue-body" id="queue-body">
+      {% if jobs %}
+        {% for job in jobs %}
+        <div class="qrow qr-{{ job.status }}" id="qrow-{{ job.id }}" data-status="{{ job.status }}" data-id="{{ job.id }}">
+
+          <!-- status icon -->
+          <div class="qrow-handle"><div class="qrow-num"></div></div>
+          <div class="qrow-icon">
+            {% if job.status == 'done' %}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            {% elif job.status == 'error' %}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-error)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {% elif job.status == 'running' %}
+              <div class="rdot"></div>
+            {% else %}
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--c-card-border);"></div>
+            {% endif %}
+          </div>
+
+          <!-- text -->
+          <div class="qrow-text">
+            <div class="qrow-title" title="{{ job.vendor_url }}">{{ job.vendor_name or job.vendor_url }}</div>
+            <div class="qrow-meta">
+              {% if job.category %}<span class="qrow-cat">{{ job.category }}</span>{% endif %}
+              {% if job.depth %}<span>{{ job.depth }}</span>{% endif %}
+              {% if job.skus %}<span style="font-family:'JetBrains Mono',monospace; font-size:10px; opacity:0.7;">{{ job.skus | tojson | replace('"','') | replace('[','') | replace(']','') | truncate(40) }}</span>{% endif %}
+              {% if job.created_at %}<span>{{ job.created_at.strftime('%d %b') }}</span>{% endif %}
+            </div>
+          </div>
+
+          <!-- actions -->
+          <div class="qrow-actions">
+            {% if job.status == 'pending' %}
+              <button class="btn btn-gold btn-sm" onclick="runVendor({{ job.id }}, this)">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run
+              </button>
+              <span class="badge badge-pending">pending</span>
+            {% elif job.status == 'done' %}
+              {% if job.profile_id %}
+              <a href="/vendor/{{ job.profile_id }}" class="btn btn-secondary btn-sm">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Profile
+              </a>
+              {% endif %}
+              <span class="badge badge-done">done</span>
+            {% elif job.status == 'error' %}
+              <button class="btn btn-secondary btn-sm" onclick="runVendor({{ job.id }}, this)">Retry</button>
+              <span class="badge badge-error">error</span>
+            {% elif job.status == 'running' %}
+              <span class="badge badge-running" id="rbadge-{{ job.id }}">running</span>
+            {% endif %}
+          </div>
+
+          <!-- Running stage bar -->
+          <div class="qrow-running-bar" id="rbar-{{ job.id }}" {% if job.status != 'running' %}style="display:none"{% endif %}>
+            <div class="rdot"></div>
+            <span id="rstage-{{ job.id }}">Scraping…</span>
+          </div>
+
+        </div>
+        {% endfor %}
+        <div id="q-empty" style="display:none;text-align:center;padding:24px;color:var(--c-text-muted);font-size:13px;">No jobs match this filter.</div>
+      {% else %}
+        <div style="text-align:center;padding:48px 20px;color:var(--c-text-muted);">
+          <div style="font-size:36px;margin-bottom:12px;opacity:0.3;">🏭</div>
+          <div style="font-size:13px;">No vendors queued yet. Add a vendor URL to get started.</div>
+        </div>
+      {% endif %}
+    </div>
+  </div><!-- /queue-card -->
+
+  <!-- ── Engine panel ─────────────────────────────────────────── -->
+  <div class="engine-col">
+
+    <div class="engine-card" id="engine-card">
+
+      <!-- Idle -->
+      <div id="engine-idle">
+        <div class="engine-card-header">
+          <div class="status-idle" id="eng-dot"></div>
+          <span class="engine-card-title">Scraper Engine</span>
+        </div>
+        <div class="engine-idle">
+          <div class="engine-idle-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/>
+            </svg>
+          </div>
+          <div class="engine-idle-title">Ready to scrape</div>
+          <div class="engine-idle-desc">Run a vendor job to stream live scraper progress — pages visited, data extracted, and LLM profile written here.</div>
+        </div>
+      </div>
+
+      <!-- Live -->
+      <div id="engine-live" style="display:none;">
+        <div class="engine-card-header">
+          <div class="status-live" id="eng-dot-live"></div>
+          <div style="flex:1;min-width:0;">
+            <div class="engine-card-title" id="eng-topic" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Starting…</div>
+            <div style="font-size:11px;color:var(--c-text-muted);margin-top:1px;" id="eng-prog"></div>
+          </div>
+          <span class="eng-elapsed" id="eng-elapsed">0s</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="eng-prog-fill" style="width:0%"></div></div>
+
+        <div class="pipeline">
+          <div class="pipeline-step" id="ps-queries"><div class="pdot"></div><div class="plabel">Plan</div></div>
+          <div class="pipeline-step" id="ps-searching"><div class="pdot"></div><div class="plabel">Search</div></div>
+          <div class="pipeline-step" id="ps-scraping"><div class="pdot"></div><div class="plabel">Scrape</div></div>
+          <div class="pipeline-step" id="ps-synthesising"><div class="pdot"></div><div class="plabel">Profile</div></div>
+          <div class="pipeline-step" id="ps-saving"><div class="pdot"></div><div class="plabel">Save</div></div>
+        </div>
+
+        <div class="eng-meta-row" id="eng-meta-row" style="display:none;">
+          <span class="eng-meta-pill" id="eng-sources">0 pages</span>
+          <span class="eng-meta-pill" id="eng-scrape"></span>
+        </div>
+
+        <div class="engine-section">
+          <div class="engine-section-label">Actions taken</div>
+          <div class="ql-wrap" id="eng-queries"></div>
+        </div>
+
+        <div class="engine-section" id="eng-files-section" style="display:none;">
+          <div class="engine-section-label">Generated files</div>
+          <div class="gen-files-wrap" id="eng-files"></div>
+        </div>
+
+        <div class="console-wrap">
+          <div class="console-bar" style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:7px;">
+              <div class="cdot cdot-r"></div><div class="cdot cdot-y"></div><div class="cdot cdot-g"></div>
+              <span class="clabel">vendor.log</span>
+            </div>
+            <button class="console-clear-btn" onclick="clearConsole()">clear</button>
+          </div>
+          <div class="console-out" id="console-out">
+            <div class="cline cl-info"><span class="ct">--:--</span><span class="cm">Waiting…</span></div>
+          </div>
+        </div>
+
+        <div class="eng-token-row" id="eng-token-row" style="display:none;">
+          <span class="eng-token-pill" id="eng-tok-run">0 tokens</span>
+          <span class="eng-token-pill" id="eng-tok-cost">£0.0000</span>
+          <span class="eng-token-pill eng-token-today" id="eng-tok-today">today: 0</span>
+        </div>
+
+        <div id="eng-done-notice" style="display:none;padding:10px 16px;background:rgba(58,107,74,0.08);border-top:1px solid rgba(58,107,74,0.2);font-size:12px;color:var(--c-success);">
+          ✓ Scrape complete —
+          <a href="" onclick="location.reload();return false;" style="color:var(--c-success);text-decoration:underline;">refresh page</a>
+          to see the profile.
+        </div>
+      </div>
+
+    </div><!-- /engine-card -->
+
+    <!-- Quick add -->
+    <div class="engine-card">
+      <div class="engine-card-header" style="border-bottom:none;">
+        <span class="engine-card-title" style="font-size:12px;font-family:'DM Sans',sans-serif;font-weight:600;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:0.7px;">Quick add</span>
+      </div>
+      <form method="POST" action="/vendors/queue" class="quickadd" style="padding-top:0;padding-bottom:14px;">
+        <input class="form-input" name="vendor_url" placeholder="https://supplier.co.uk" required />
+        <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;height:34px;">Add</button>
+      </form>
+    </div>
+
+  </div><!-- /engine-col -->
+
+</div><!-- /project-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Filter tabs ──────────────────────────────────────────────
+function filterQ(f) {
+  document.querySelectorAll('.qtab').forEach(t => t.classList.remove('active'));
+  const tab = document.querySelector('[data-filter="' + f + '"]');
+  if (tab) tab.classList.add('active');
+  let n = 0;
+  document.querySelectorAll('.qrow[data-status]').forEach(r => {
+    const show = f === 'all' || r.dataset.status === f;
+    r.style.display = show ? '' : 'none';
+    if (show) n++;
+  });
+  document.getElementById('q-empty').style.display = n === 0 ? '' : 'none';
+}
+
+// ── Run vendor job (no full reload) ─────────────────────────
+async function runVendor(jobId, btn) {
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  try {
+    const res = await fetch(`/vendors/${jobId}/run`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error('failed');
+    // Update row status optimistically
+    const row = document.getElementById('qrow-' + jobId);
+    if (row) {
+      row.dataset.status = 'running';
+      row.className = 'qrow qr-running';
+      const actions = row.querySelector('.qrow-actions');
+      if (actions) actions.innerHTML = '<span class="badge badge-running" id="rbadge-' + jobId + '">running</span>';
+      const bar = document.getElementById('rbar-' + jobId);
+      if (bar) bar.style.display = '';
+    }
+  } catch {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+// ── Pipeline stages ──────────────────────────────────────────
+const STAGES = ['queries', 'searching', 'scraping', 'synthesising', 'saving'];
+const SLABELS = {
+  queries: 'Planning…', searching: 'Searching…',
+  scraping: 'Scraping pages…', synthesising: 'Writing profile…', saving: 'Saving…'
+};
+
+function setPipeline(stage) {
+  const idx = STAGES.indexOf(stage);
+  STAGES.forEach((s, i) => {
+    const el = document.getElementById('ps-' + s);
+    if (!el) return;
+    el.classList.remove('sdone', 'sactive');
+    if (i < idx) el.classList.add('sdone');
+    else if (i === idx) el.classList.add('sactive');
+  });
+}
+
+// ── Console ──────────────────────────────────────────────────
+const con = document.getElementById('console-out');
+let seeded = false;
+
+function addLog(e) {
+  if (!seeded) { con.innerHTML = ''; seeded = true; }
+  const d = document.createElement('div');
+  d.className = 'cline cl-' + (e.level || 'info');
+  d.innerHTML = '<span class="ct">' + (e.t || '') + '</span><span class="cm">' + esc(e.msg || '') + '</span>';
+  con.appendChild(d);
+  con.scrollTop = con.scrollHeight;
+  while (con.children.length > 500) con.removeChild(con.firstChild);
+}
+
+function clearConsole() { con.innerHTML = ''; seeded = false; }
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ── Elapsed timer ────────────────────────────────────────────
+let elapsedInterval = null;
+let elapsedStart = null;
+
+function startElapsed() {
+  elapsedStart = Date.now();
+  elapsedInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - elapsedStart) / 1000);
+    const m = Math.floor(s / 60), ss = s % 60;
+    const el = document.getElementById('eng-elapsed');
+    if (el) el.textContent = (m > 0 ? m + 'm ' : '') + ss + 's';
+  }, 1000);
+}
+function stopElapsed() {
+  if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
+}
+
+// ── Query / action list ──────────────────────────────────────
+let renderedQueries = 0, renderedFiles = 0;
+
+function renderQueries(qs) {
+  const wrap = document.getElementById('eng-queries');
+  if (!wrap) return;
+  for (let i = renderedQueries; i < qs.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'ql-item ql-new';
+    d.textContent = qs[i];
+    wrap.appendChild(d);
+  }
+  renderedQueries = qs.length;
+}
+
+function renderFiles(files) {
+  const wrap = document.getElementById('eng-files');
+  if (!wrap) return;
+  for (let i = renderedFiles; i < files.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'gen-file';
+    d.textContent = files[i].split('/').pop();
+    wrap.appendChild(d);
+  }
+  renderedFiles = files.length;
+  if (files.length > 0) {
+    const sec = document.getElementById('eng-files-section');
+    if (sec) sec.style.display = '';
+  }
+}
+
+// ── SSE state handler ────────────────────────────────────────
+let wasRunning = false;
+
+function applyState(s) {
+  if (s.running) {
+    document.getElementById('engine-idle').style.display = 'none';
+    document.getElementById('engine-live').style.display = '';
+    document.getElementById('eng-topic').textContent = s.topic || 'Running…';
+    const pct = s.total > 0 ? Math.round(s.progress / s.total * 100) : 0;
+    document.getElementById('eng-prog-fill').style.width = pct + '%';
+    document.getElementById('eng-prog').textContent = s.total > 1 ? (s.progress + ' of ' + s.total + ' done') : '';
+    if (s.stage) setPipeline(s.stage);
+    if (s.topic_id) {
+      const bar = document.getElementById('rstage-' + s.topic_id);
+      if (bar && s.stage) bar.textContent = SLABELS[s.stage] || 'Running…';
+    }
+    if (!wasRunning) { startElapsed(); renderedQueries = 0; renderedFiles = 0; }
+    if (s.current_queries) renderQueries(s.current_queries);
+    if (s.generated_files) renderFiles(s.generated_files);
+    const sc = document.getElementById('eng-sources');
+    if (sc && s.source_count > 0) sc.textContent = s.source_count + ' pages';
+    const sp = document.getElementById('eng-scrape');
+    if (sp && s.scrape_progress) sp.textContent = 'Page ' + s.scrape_progress;
+    const mr = document.getElementById('eng-meta-row');
+    if (mr && (s.source_count > 0 || s.scrape_progress)) mr.style.display = '';
+    if (s.tokens_run > 0) {
+      const tr = document.getElementById('eng-token-row');
+      if (tr) tr.style.display = '';
+      const tk = document.getElementById('eng-tok-run');
+      const tc = document.getElementById('eng-tok-cost');
+      const tt = document.getElementById('eng-tok-today');
+      if (tk) tk.textContent = s.tokens_run.toLocaleString() + ' tokens';
+      if (tc) tc.textContent = '£' + (s.cost_gbp_run || 0).toFixed(4);
+      if (tt) tt.textContent = 'today: ' + (s.tokens_today || 0).toLocaleString();
+    }
+    wasRunning = true;
+  } else {
+    if (wasRunning) {
+      wasRunning = false;
+      stopElapsed();
+      const notice = document.getElementById('eng-done-notice');
+      if (notice) notice.style.display = '';
+    }
+    document.getElementById('engine-idle').style.display = '';
+    document.getElementById('engine-live').style.display = 'none';
+  }
+}
+
+// ── SSE connect ──────────────────────────────────────────────
+let sseRetry = 1000;
+function connect() {
+  const es = new EventSource('/api/run-stream');
+  es.onopen = () => { sseRetry = 1000; };
+  es.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'state') applyState(d);
+      else if (d.type === 'log') addLog(d);
+      else if (d.type === 'done') {
+        const notice = document.getElementById('eng-done-notice');
+        if (notice) notice.style.display = '';
+      }
+    } catch(_) {}
+  };
+  es.onerror = function() {
+    es.close();
+    setTimeout(connect, sseRetry);
+    sseRetry = Math.min(sseRetry * 2, 30000);
+  };
+}
+connect();
+</script>
+
+<!-- Queue vendor modal -->
+<div class="modal-overlay hidden" id="modal-new-vendor">
+  <div class="modal" style="max-width:540px;">
+    <h2 class="modal-title">Queue vendor scrape</h2>
+    <form method="POST" action="/vendors/queue">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Vendor URL *</label>
+        <input class="form-input" name="vendor_url" placeholder="https://supplier.co.uk" required autofocus style="width:100%;" />
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Vendor name</label>
+        <input class="form-input" name="vendor_name" placeholder="e.g. Carvansons" style="width:100%;" />
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Products to find</label>
+        <input class="form-input" name="skus" placeholder="coco apricot wax, 100ml amber jar" style="width:100%;" />
+        <div style="font-size:11px; color:var(--c-text-muted); margin-top:5px;">Use supplier terminology, not NNL codes. Separate multiple products with commas.</div>
+      </div>
+      <div class="form-row" style="gap:12px; margin-bottom:0;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label class="form-label">Category</label>
+          <select class="form-select" name="category" style="width:100%;">
+            <option value="">— select —</option>
+            <option value="raw-fragrance">raw-fragrance</option>
+            <option value="raw-wax">raw-wax</option>
+            <option value="raw-wick">raw-wick</option>
+            <option value="raw-ingredient">raw-ingredient</option>
+            <option value="packaging-glass">packaging-glass</option>
+            <option value="packaging-closure">packaging-closure</option>
+            <option value="packaging-carton">packaging-carton</option>
+            <option value="labels">labels</option>
+            <option value="third-party-finished">third-party-finished</option>
+            <option value="sundry">sundry</option>
+            <option value="services">services</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label class="form-label">Depth</label>
+          <select class="form-select" name="depth" style="width:100%;">
+            {% for key, label, mins in depth_choices %}
+            <option value="{{ key }}" {% if key == 'standard' %}selected{% endif %}>{{ label }} (~{{ mins }}m)</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-vendor')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add to queue</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

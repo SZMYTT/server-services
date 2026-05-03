@@ -1,0 +1,517 @@
+{% extends "base.html" %}
+{% block title %}Blood Test Vault | HealthOS{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── Two-panel layout ────────────────────────────────────── */
+.vault-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) { .vault-grid { grid-template-columns: 1fr; } }
+
+/* ── Log-test form ───────────────────────────────────────── */
+.test-form-rows { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.biomarker-input-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 28px;
+  gap: 6px; align-items: center;
+}
+.biomarker-input-row select { font-size: 12.5px; }
+.biomarker-input-row input  { font-size: 12.5px; text-align: center; }
+.remove-row-btn {
+  height: 34px; width: 28px;
+  border: 1px solid var(--c-card-border); border-radius: 5px;
+  font-size: 14px; color: var(--c-text-muted);
+  background: var(--c-input-bg); cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.remove-row-btn:hover { color: var(--c-error); border-color: var(--c-error); }
+.add-row-link {
+  font-size: 12.5px; color: var(--c-gold-dark);
+  background: none; border: none;
+  cursor: pointer; text-decoration: underline; text-align: left;
+}
+
+/* ── Past tests list ─────────────────────────────────────── */
+.test-event-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border);
+  border-radius: 6px; margin-bottom: 6px;
+  font-size: 13px;
+}
+.test-event-date { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; color: var(--c-text-primary); }
+.test-event-meta { font-size: 11.5px; color: var(--c-text-muted); margin-top: 2px; }
+
+/* ── Analytics section ───────────────────────────────────── */
+.analytics-controls {
+  display: flex; gap: 10px; align-items: flex-end;
+  flex-wrap: wrap; margin-bottom: 20px;
+}
+.analytics-controls .form-group { margin-bottom: 0; flex: 1; min-width: 160px; }
+
+.biomarker-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.biomarker-chart-card { background: var(--c-card); border: 1px solid var(--c-card-border); border-radius: 10px; padding: 16px 20px; }
+.bm-chart-title { font-size: 13px; font-weight: 600; color: var(--c-text-primary); margin-bottom: 4px; }
+.bm-chart-unit  { font-size: 11px; color: var(--c-text-muted); margin-bottom: 10px; }
+.bm-chart-status { font-size: 11.5px; font-weight: 600; margin-bottom: 8px; }
+.bm-status-ok   { color: var(--c-success); }
+.bm-status-low  { color: var(--c-warning); }
+.bm-status-high { color: var(--c-error); }
+.bm-status-none { color: var(--c-text-muted); }
+.bm-chart-wrap  { position: relative; height: 160px; }
+
+/* ── Correlation chart ───────────────────────────────────── */
+.corr-chart-wrap { position: relative; height: 240px; }
+
+/* ── Status pills ────────────────────────────────────────── */
+.status-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.pill-ok   { background: rgba(58,107,74,0.15);  color: var(--c-success); }
+.pill-low  { background: rgba(155,122,42,0.15); color: var(--c-warning); }
+.pill-high { background: rgba(139,58,42,0.12);  color: var(--c-error);   }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Blood Test Vault</h1>
+  <p class="page-subtitle">Log, visualise, and correlate your biomarker data over time</p>
+</div>
+
+<div class="vault-grid">
+
+  <!-- ── LEFT: Log panel ── -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Log new test -->
+    <div class="card">
+      <div class="card-title">Log New Blood Test</div>
+      <div class="form-group">
+        <label class="form-label">Test Date</label>
+        <input class="form-input" type="date" id="testDate">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lab / Clinic</label>
+        <input class="form-input" type="text" id="testLab" placeholder="e.g. Medichecks, NHS">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input class="form-input" type="text" id="testNotes" placeholder="Fasted, morning…">
+      </div>
+
+      <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--c-text-muted);margin-bottom:6px;">
+        Biomarker Results
+      </div>
+      <div class="test-form-rows" id="biomarkerRows"></div>
+      <button class="add-row-link" onclick="addBiomarkerRow()">+ Add biomarker</button>
+
+      <button class="btn btn-primary btn-full" style="margin-top:14px;" onclick="submitTest()">
+        Save Blood Test
+      </button>
+    </div>
+
+    <!-- Past tests -->
+    <div class="card">
+      <div class="card-title">Past Tests</div>
+      <div id="pastTests"><div style="color:var(--c-text-muted);font-size:12.5px;">Loading…</div></div>
+    </div>
+
+  </div>
+
+  <!-- ── RIGHT: Analytics ── -->
+  <div>
+
+    <!-- Chart controls -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">Analytics Dashboard</div>
+      <div class="analytics-controls">
+        <div class="form-group">
+          <label class="form-label">Biomarker</label>
+          <select class="form-select" id="analyticsSelect" onchange="loadAnalytics()">
+            <option value="">— select —</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;">
+          <label class="form-label">Correlate with</label>
+          <select class="form-select" id="correlateMetric" onchange="loadCorrelation()">
+            <option value="sleep_hrs">Sleep (hrs)</option>
+            <option value="resting_hr">Resting HR</option>
+            <option value="hrv_ms">HRV</option>
+            <option value="steps">Steps</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Single biomarker history chart -->
+      <div id="singleChartWrap" style="display:none;">
+        <div class="bm-chart-title" id="singleChartTitle"></div>
+        <div class="bm-chart-unit"  id="singleChartUnit"></div>
+        <div class="bm-chart-status" id="singleChartStatus"></div>
+        <div class="bm-chart-wrap">
+          <canvas id="singleChart"></canvas>
+          <div class="chart-empty" id="singleChartEmpty" style="display:none;">No data yet — log a test above</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Correlation dual-axis chart -->
+    <div class="card" id="corrCard" style="display:none; margin-bottom:16px;">
+      <div class="card-title" id="corrTitle">Correlation</div>
+      <div class="corr-chart-wrap">
+        <canvas id="corrChart"></canvas>
+      </div>
+      <div class="chart-legend" style="margin-top:10px;">
+        <span class="legend-dot" style="background:#8C7455;"></span><span id="corrBioLabel">Biomarker</span>
+        <span class="legend-dot" style="background:#3A6B4A; margin-left:16px;"></span><span id="corrMetricLabel">Metric (30-day avg)</span>
+      </div>
+    </div>
+
+    <!-- All-biomarker overview grid -->
+    <div class="card">
+      <div class="card-title">All Biomarker Overview</div>
+      <div class="biomarker-charts-grid" id="overviewGrid">
+        <div style="color:var(--c-text-muted);font-size:12.5px;">Select and log a test to see charts here.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let biomarkerMap  = {};   // id -> {name, unit, range_min, range_max}
+let allFlat       = [];   // flat list for dropdowns
+let singleChart   = null;
+let corrChartInst = null;
+
+// ── Init ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('testDate').value = new Date().toISOString().slice(0,10);
+  await loadBiomarkerDictionary();
+  addBiomarkerRow();
+  loadPastTests();
+  loadOverviewGrid();
+});
+
+// ── Biomarker dictionary ─────────────────────────────────────
+async function loadBiomarkerDictionary() {
+  const grouped = await fetch('/api/biomarkers').then(r => r.json());
+  allFlat = [];
+  for (const [cat, items] of Object.entries(grouped)) {
+    items.forEach(b => {
+      biomarkerMap[b.id] = b;
+      allFlat.push({...b, category: cat});
+    });
+  }
+  // Populate analytics dropdown
+  const sel = document.getElementById('analyticsSelect');
+  for (const [cat, items] of Object.entries(grouped)) {
+    const og = document.createElement('optgroup');
+    og.label = cat;
+    items.forEach(b => {
+      const o = document.createElement('option');
+      o.value = b.id; o.textContent = b.name;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  }
+}
+
+// ── Dynamic row builder ───────────────────────────────────────
+function buildSelect() {
+  const sel = document.createElement('select');
+  sel.className = 'form-select';
+  // Group by category
+  const grouped = {};
+  allFlat.forEach(b => { (grouped[b.category] = grouped[b.category]||[]).push(b); });
+  const blank = document.createElement('option');
+  blank.value = ''; blank.textContent = '— biomarker —';
+  sel.appendChild(blank);
+  for (const [cat, items] of Object.entries(grouped)) {
+    const og = document.createElement('optgroup');
+    og.label = cat;
+    items.forEach(b => {
+      const o = document.createElement('option');
+      o.value = b.id;
+      o.textContent = b.name + (b.unit ? ` (${b.unit})` : '');
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  }
+  return sel;
+}
+
+function addBiomarkerRow() {
+  const row = document.createElement('div');
+  row.className = 'biomarker-input-row';
+  const sel = buildSelect();
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = '0.01'; inp.className = 'form-input';
+  inp.placeholder = 'Value';
+  const del = document.createElement('button');
+  del.className = 'remove-row-btn'; del.textContent = '×';
+  del.onclick = () => row.remove();
+  row.appendChild(sel); row.appendChild(inp); row.appendChild(del);
+  document.getElementById('biomarkerRows').appendChild(row);
+}
+
+// ── Submit test ───────────────────────────────────────────────
+async function submitTest() {
+  const test_date = document.getElementById('testDate').value;
+  const lab_name  = document.getElementById('testLab').value.trim();
+  const notes     = document.getElementById('testNotes').value.trim();
+
+  const rows = document.querySelectorAll('.biomarker-input-row');
+  const results = [];
+  rows.forEach(row => {
+    const bid = row.querySelector('select').value;
+    const val = parseFloat(row.querySelector('input').value);
+    if (bid && !isNaN(val)) results.push({ biomarker_id: +bid, value: val });
+  });
+
+  if (!test_date)       { showToast('Enter a test date', 'error'); return; }
+  if (!results.length)  { showToast('Add at least one result', 'error'); return; }
+
+  const res = await fetch('/api/blood-tests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ test_date, lab_name, notes, results })
+  });
+  if (res.status === 201) {
+    showToast(`Test saved — ${results.length} biomarker${results.length>1?'s':''} logged`);
+    document.getElementById('testLab').value   = '';
+    document.getElementById('testNotes').value = '';
+    document.getElementById('biomarkerRows').innerHTML = '';
+    addBiomarkerRow();
+    loadPastTests();
+    loadOverviewGrid();
+  } else {
+    const err = await res.json();
+    showToast(err.error || 'Error saving', 'error');
+  }
+}
+
+// ── Past tests list ───────────────────────────────────────────
+async function loadPastTests() {
+  const tests = await fetch('/api/blood-tests').then(r => r.json());
+  const el = document.getElementById('pastTests');
+  if (!tests.length) {
+    el.innerHTML = '<div style="color:var(--c-text-muted);font-size:12.5px;">No tests logged yet.</div>';
+    return;
+  }
+  el.innerHTML = tests.map(t => `
+    <div class="test-event-row">
+      <div>
+        <div class="test-event-date">${new Date(t.test_date+'T12:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>
+        <div class="test-event-meta">${t.lab_name||'—'} &nbsp;·&nbsp; ${t.result_count} marker${t.result_count!=1?'s':''}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Single biomarker history chart ────────────────────────────
+async function loadAnalytics() {
+  const bid = document.getElementById('analyticsSelect').value;
+  if (!bid) return;
+
+  const { history, meta } = await fetch(`/api/biomarkers/${bid}/history`).then(r => r.json());
+  const wrap  = document.getElementById('singleChartWrap');
+  const empty = document.getElementById('singleChartEmpty');
+
+  document.getElementById('singleChartTitle').textContent = meta.name || '';
+  document.getElementById('singleChartUnit').textContent  = meta.unit ? `Unit: ${meta.unit}` : '';
+
+  if (!history.length) {
+    wrap.style.display = ''; empty.style.display = 'flex';
+    return;
+  }
+  wrap.style.display = ''; empty.style.display = 'none';
+
+  // Status badge
+  const latest = history[history.length-1].value;
+  const statusEl = document.getElementById('singleChartStatus');
+  if (meta.range_min !== null && meta.range_max !== null) {
+    if (latest < meta.range_min)
+      statusEl.innerHTML = `Latest: <strong>${latest} ${meta.unit||''}</strong> — <span class="status-pill pill-low">Below Range</span>`;
+    else if (latest > meta.range_max)
+      statusEl.innerHTML = `Latest: <strong>${latest} ${meta.unit||''}</strong> — <span class="status-pill pill-high">Above Range</span>`;
+    else
+      statusEl.innerHTML = `Latest: <strong>${latest} ${meta.unit||''}</strong> — <span class="status-pill pill-ok">Optimal</span>`;
+  } else {
+    statusEl.textContent = `Latest: ${latest} ${meta.unit||''}`;
+  }
+
+  const labels = history.map(h => new Date(h.date+'T12:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}));
+  const values = history.map(h => h.value);
+
+  if (singleChart) singleChart.destroy();
+  singleChart = new Chart(document.getElementById('singleChart').getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: meta.name, data: values,
+      borderColor: '#8C7455', backgroundColor: 'rgba(191,168,128,0.12)',
+      borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#8C7455',
+      tension: 0.3, fill: true,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        annotation: buildAnnotation(meta.range_min, meta.range_max),
+      },
+      scales: {
+        x: { grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color:'#6B8578'} },
+        y: { grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color:'#8C7455'} },
+      }
+    },
+    plugins: [rangeBandPlugin(meta.range_min, meta.range_max)],
+  });
+
+  loadCorrelation();
+}
+
+// ── Optimal range band plugin (inline, no external plugin needed)
+function rangeBandPlugin(rMin, rMax) {
+  return {
+    id: 'rangeBand',
+    beforeDraw(chart) {
+      if (rMin === null || rMax === null) return;
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+      const yMin = y.getPixelForValue(rMin);
+      const yMax = y.getPixelForValue(rMax);
+      ctx.save();
+      ctx.fillStyle = 'rgba(58,107,74,0.10)';
+      ctx.fillRect(left, Math.min(yMin,yMax), right-left, Math.abs(yMax-yMin));
+      ctx.restore();
+    }
+  };
+}
+function buildAnnotation() { return {}; } // placeholder if annotation plugin loaded later
+
+// ── Overview grid (all tracked biomarkers with any data) ──────
+async function loadOverviewGrid() {
+  const tests = await fetch('/api/blood-tests').then(r => r.json());
+  if (!tests.length) return;
+
+  const grid = document.getElementById('overviewGrid');
+  grid.innerHTML = '';
+
+  // Load history for each biomarker that has at least one result
+  const seenIds = new Set();
+  for (const test of tests) {
+    // We'll load per-biomarker lazily from known IDs
+  }
+  // Instead: load all known biomarkers and check for data
+  for (const b of allFlat) {
+    const { history, meta } = await fetch(`/api/biomarkers/${b.id}/history`).then(r=>r.json());
+    if (!history.length) continue;
+    if (seenIds.has(b.id)) continue;
+    seenIds.add(b.id);
+
+    const latest = history[history.length-1].value;
+    let statusClass = 'bm-status-none', statusText = `${latest} ${meta.unit||''}`;
+    if (meta.range_min !== null && meta.range_max !== null) {
+      if (latest < meta.range_min) { statusClass='bm-status-low';  statusText=`${latest} ${meta.unit} ↓ Low`; }
+      else if (latest > meta.range_max) { statusClass='bm-status-high'; statusText=`${latest} ${meta.unit} ↑ High`; }
+      else { statusClass='bm-status-ok'; statusText=`${latest} ${meta.unit} — Optimal`; }
+    }
+
+    const card = document.createElement('div');
+    card.className = 'biomarker-chart-card';
+    const canvasId = `bmc_${b.id}`;
+    card.innerHTML = `
+      <div class="bm-chart-title">${b.name}</div>
+      <div class="bm-chart-unit">${b.unit}</div>
+      <div class="bm-chart-status ${statusClass}">${statusText}</div>
+      <div class="bm-chart-wrap"><canvas id="${canvasId}"></canvas></div>
+    `;
+    grid.appendChild(card);
+
+    const labels = history.map(h => new Date(h.date+'T12:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}));
+    new Chart(document.getElementById(canvasId).getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets: [{
+        data: history.map(h=>h.value),
+        borderColor: '#8C7455', backgroundColor: 'rgba(191,168,128,0.1)',
+        borderWidth: 1.5, pointRadius: 3, tension: 0.3, fill: true,
+      }]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y} ${meta.unit||''}`}} },
+        scales:{
+          x:{display:false},
+          y:{grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:9},color:'#6B8578'}},
+        }
+      },
+      plugins: [rangeBandPlugin(meta.range_min, meta.range_max)],
+    });
+  }
+  if (!seenIds.size) {
+    grid.innerHTML = '<div style="color:var(--c-text-muted);font-size:12.5px;">Log a test above to see charts.</div>';
+  }
+}
+
+// ── Correlation chart ─────────────────────────────────────────
+async function loadCorrelation() {
+  const bid    = document.getElementById('analyticsSelect').value;
+  const metric = document.getElementById('correlateMetric').value;
+  if (!bid) return;
+
+  const { data, meta } = await fetch(`/api/biomarkers/${bid}/correlate?metric=${metric}`).then(r=>r.json());
+  const card = document.getElementById('corrCard');
+  if (!data || !data.length) { card.style.display='none'; return; }
+
+  card.style.display = '';
+  const metricLabels = {sleep_hrs:'Sleep (hrs)', resting_hr:'Resting HR (bpm)', hrv_ms:'HRV (ms)', steps:'Steps'};
+  document.getElementById('corrTitle').textContent    = `${meta.biomarker_name} vs ${metricLabels[metric]||metric}`;
+  document.getElementById('corrBioLabel').textContent = `${meta.biomarker_name} (${meta.biomarker_unit})`;
+  document.getElementById('corrMetricLabel').textContent = metricLabels[metric] + ' — 30-day avg';
+
+  const labels = data.map(d => new Date(d.date+'T12:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}));
+
+  if (corrChartInst) corrChartInst.destroy();
+  corrChartInst = new Chart(document.getElementById('corrChart').getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [
+      {
+        label: meta.biomarker_name, data: data.map(d=>d.biomarker),
+        borderColor:'#8C7455', backgroundColor:'rgba(191,168,128,0.12)',
+        borderWidth:2, pointRadius:4, tension:0.3, yAxisID:'yBio',
+      },
+      {
+        label: metricLabels[metric], data: data.map(d=>d.metric_avg),
+        borderColor:'#3A6B4A', backgroundColor:'rgba(58,107,74,0.10)',
+        borderWidth:2, pointRadius:4, tension:0.3, yAxisID:'yMetric', spanGaps:true,
+      }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color:'#6B8578'} },
+        yBio:{   type:'linear', position:'left',  grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color:'#8C7455'} },
+        yMetric: { type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{font:{size:10},color:'#3A6B4A'} },
+      }
+    },
+    plugins:[rangeBandPlugin(meta.range_min, meta.range_max)],
+  });
+}
+</script>
+{% endblock %}

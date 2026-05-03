@@ -1,0 +1,412 @@
+{% extends "base.html" %}
+{% block title %}Activity — HealthOS{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Activity</h1>
+  <p class="page-subtitle">Workout logging with progressive overload tracking</p>
+</div>
+
+<!-- ── Top bar: active session strip (hidden until session starts) ── -->
+<div class="session-bar" id="session-bar" style="display:none;">
+  <div class="session-info">
+    <span class="session-name" id="session-name"></span>
+    <span class="session-timer" id="session-timer">0:00</span>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-secondary" onclick="addExerciseToSession()">+ Exercise</button>
+    <button class="btn btn-primary" onclick="finishWorkout()">Finish</button>
+  </div>
+</div>
+
+<!-- ── Two-panel layout ── -->
+<div class="activity-grid" id="main-grid">
+
+  <!-- Left: templates / exercise library -->
+  <div>
+
+    <!-- Templates -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        Templates
+        <button class="btn btn-secondary" style="height:30px;font-size:12px;"
+                onclick="showNewTemplateModal()">+ New</button>
+      </div>
+
+      {% if templates %}
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          {% for t in templates %}
+          <div class="template-row" onclick="startSession({{ t.id }}, '{{ t.name|e }}')">
+            <div>
+              <div style="font-weight:500;font-size:13px;">{{ t.name }}</div>
+              {% if t.notes %}<div style="font-size:12px;color:var(--c-text-muted);">{{ t.notes }}</div>{% endif %}
+            </div>
+            <button class="btn btn-primary" style="height:30px;font-size:12px;padding:0 12px;">Start</button>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No templates yet — create one to get started.</div>
+      {% endif %}
+    </div>
+
+    <!-- Quick start -->
+    <div class="card">
+      <div class="card-title">Quick Start</div>
+      <p style="font-size:12.5px;color:var(--c-text-muted);margin-bottom:12px;">
+        Start an ad-hoc session without a template.
+      </p>
+      <button class="btn btn-secondary btn-full" onclick="startSession(null, 'Ad-hoc Session')">
+        Start empty session
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Right: active session exercises (hidden until session starts) -->
+  <div id="session-panel" style="display:none;">
+    <div id="exercise-list" style="display:flex;flex-direction:column;gap:16px;"></div>
+  </div>
+
+</div>
+
+<!-- ── Recent workouts ── -->
+<div class="card" style="margin-top:20px;" id="history-card">
+  <div class="card-title">Recent workouts</div>
+  <div id="workout-history">
+    <div class="empty-state">Loading…</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     New Template Modal
+════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="template-modal" style="display:none;" onclick="closeTemplateModal(event)">
+  <div class="modal-box" style="width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">New Template</div>
+      <button class="modal-close" onclick="closeTemplateModal()">×</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Template name</label>
+      <input class="form-input" id="tmpl-name" placeholder="e.g. Push A" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (optional)</label>
+      <input class="form-input" id="tmpl-notes" placeholder="Chest / shoulders / triceps…" />
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <label class="form-label" style="margin:0;">Exercises</label>
+        <button class="btn btn-secondary" style="height:28px;font-size:12px;" onclick="addExerciseRow()">+ Add</button>
+      </div>
+      <div id="tmpl-exercises" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeTemplateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Save template</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     Add Exercise to Session Modal
+════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="add-ex-modal" style="display:none;" onclick="closeAddExModal(event)">
+  <div class="modal-box" style="width:400px;">
+    <div class="modal-header">
+      <div class="modal-title">Add Exercise</div>
+      <button class="modal-close" onclick="closeAddExModal()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Exercise</label>
+      <select class="form-select" id="add-ex-select"></select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeAddExModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddExercise()">Add</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let _logId      = null;
+let _startTime  = null;
+let _timerInt   = null;
+let _exercises  = {{ exercises | tojson }};  // [{id, name, muscle_group}]
+let _sessionExercises = [];   // [{exercise_id, name, sets:[]}]
+
+// ── Timer ──────────────────────────────────────────────────────────────────
+function startTimer() {
+  _startTime = Date.now();
+  _timerInt = setInterval(() => {
+    const secs = Math.floor((Date.now() - _startTime) / 1000);
+    const m = Math.floor(secs / 60);
+    const s = String(secs % 60).padStart(2, '0');
+    document.getElementById('session-timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+// ── Start session ─────────────────────────────────────────────────────────
+async function startSession(templateId, name) {
+  const res = await fetch('/api/workouts/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({template_id: templateId, name}),
+  });
+  const data = await res.json();
+  _logId = data.log_id;
+
+  document.getElementById('session-bar').style.display = 'flex';
+  document.getElementById('session-name').textContent = name;
+  document.getElementById('session-panel').style.display = 'block';
+  document.getElementById('main-grid').style.gridTemplateColumns = '300px 1fr';
+  startTimer();
+
+  if (templateId) {
+    const tRes = await fetch(`/api/templates/${templateId}`);
+    const tmpl = await tRes.json();
+    for (const ex of tmpl.exercises) {
+      await addExerciseBlock(ex.exercise_id, ex.exercise_name);
+    }
+  }
+}
+
+// ── Add exercise block ────────────────────────────────────────────────────
+async function addExerciseBlock(exerciseId, exerciseName) {
+  const history = await fetchHistory(exerciseId);
+  const ghost = history.length ? `${history[0].weight ?? '—'}kg × ${history[0].reps ?? '—'}` : null;
+
+  const exObj = {exercise_id: exerciseId, name: exerciseName, sets: []};
+  _sessionExercises.push(exObj);
+  const idx = _sessionExercises.length - 1;
+
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.id = `ex-block-${idx}`;
+  div.innerHTML = `
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      ${exerciseName}
+      ${ghost ? `<span style="font-size:11.5px;color:var(--c-text-muted);font-family:'DM Sans';">Last: ${ghost}</span>` : ''}
+    </div>
+    <div class="set-table">
+      <div class="set-header">
+        <span>Set</span><span>Weight (kg)</span><span>Reps</span><span>RIR</span><span>Vol</span><span></span>
+      </div>
+      <div id="set-rows-${idx}"></div>
+    </div>
+    <button class="btn btn-secondary" style="margin-top:10px;height:30px;font-size:12px;"
+            onclick="addSetRow(${idx}, ${exerciseId})">+ Set</button>
+  `;
+  document.getElementById('exercise-list').appendChild(div);
+  addSetRow(idx, exerciseId);
+}
+
+// ── Add set row ────────────────────────────────────────────────────────────
+async function fetchHistory(exerciseId) {
+  const res = await fetch(`/api/exercises/${exerciseId}/history?limit=1`);
+  return res.json();
+}
+
+function addSetRow(exIdx, exerciseId) {
+  const container = document.getElementById(`set-rows-${exIdx}`);
+  const setNum = container.children.length + 1;
+
+  const row = document.createElement('div');
+  row.className = 'set-row';
+  row.dataset.setNum = setNum;
+  row.dataset.exerciseId = exerciseId;
+  row.innerHTML = `
+    <span class="set-num">${setNum}</span>
+    <input class="set-input" type="number" placeholder="kg" step="0.5" min="0"
+           oninput="calcVol(this)" />
+    <input class="set-input" type="number" placeholder="reps" min="1" max="100"
+           oninput="calcVol(this)" />
+    <select class="set-select">
+      <option value="">—</option>
+      <option value="4">4</option>
+      <option value="3">3</option>
+      <option value="2">2</option>
+      <option value="1">1</option>
+      <option value="0">0</option>
+    </select>
+    <span class="set-vol">—</span>
+    <button class="btn btn-secondary set-log-btn"
+            onclick="logSet(this, ${exIdx})">✓</button>
+  `;
+  container.appendChild(row);
+}
+
+function calcVol(input) {
+  const row = input.closest('.set-row');
+  const inputs = row.querySelectorAll('.set-input');
+  const w = parseFloat(inputs[0].value);
+  const r = parseInt(inputs[1].value);
+  row.querySelector('.set-vol').textContent =
+    (!isNaN(w) && !isNaN(r)) ? (w * r).toFixed(1) : '—';
+}
+
+async function logSet(btn, exIdx) {
+  const row = btn.closest('.set-row');
+  const inputs = row.querySelectorAll('.set-input');
+  const weight = parseFloat(inputs[0].value) || null;
+  const reps   = parseInt(inputs[1].value)   || null;
+  const rir    = row.querySelector('.set-select').value || null;
+  const setNum = parseInt(row.dataset.setNum);
+  const exerciseId = parseInt(row.dataset.exerciseId);
+
+  const res = await fetch(`/api/workouts/${_logId}/sets`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({exercise_id: exerciseId, set_number: setNum,
+                          weight, reps, rir: rir ? parseInt(rir) : null}),
+  });
+
+  if (res.status === 201) {
+    btn.textContent = '✓';
+    btn.disabled = true;
+    btn.style.background = 'var(--c-success)';
+    btn.style.color = '#fff';
+    row.style.opacity = '0.65';
+    showToast(`Set ${setNum} logged`);
+  } else {
+    showToast('Error logging set', 'error');
+  }
+}
+
+// ── Finish workout ─────────────────────────────────────────────────────────
+async function finishWorkout() {
+  if (!_logId) return;
+  await fetch(`/api/workouts/${_logId}/finish`, {method: 'PUT'});
+  clearInterval(_timerInt);
+  document.getElementById('session-bar').style.display = 'none';
+  document.getElementById('session-panel').style.display = 'none';
+  document.getElementById('session-panel').innerHTML = '<div id="exercise-list" style="display:flex;flex-direction:column;gap:16px;"></div>';
+  document.getElementById('main-grid').style.gridTemplateColumns = '1fr';
+  _logId = null; _sessionExercises = [];
+  showToast('Workout saved!');
+  loadHistory();
+}
+
+// ── Add exercise to running session ───────────────────────────────────────
+function addExerciseToSession() {
+  const sel = document.getElementById('add-ex-select');
+  sel.innerHTML = _exercises.map(e =>
+    `<option value="${e.id}" data-name="${e.name}">${e.name}${e.muscle_group ? ' · ' + e.muscle_group : ''}</option>`
+  ).join('');
+  document.getElementById('add-ex-modal').style.display = 'flex';
+}
+function closeAddExModal(e) {
+  if (!e || e.target.classList.contains('modal-overlay'))
+    document.getElementById('add-ex-modal').style.display = 'none';
+}
+async function confirmAddExercise() {
+  const sel = document.getElementById('add-ex-select');
+  const id  = parseInt(sel.value);
+  const name = sel.options[sel.selectedIndex].dataset.name;
+  closeAddExModal();
+  await addExerciseBlock(id, name);
+}
+
+// ── New Template Modal ─────────────────────────────────────────────────────
+function showNewTemplateModal() {
+  document.getElementById('tmpl-exercises').innerHTML = '';
+  document.getElementById('tmpl-name').value = '';
+  document.getElementById('tmpl-notes').value = '';
+  addExerciseRow();
+  document.getElementById('template-modal').style.display = 'flex';
+}
+function closeTemplateModal(e) {
+  if (!e || e.target.classList.contains('modal-overlay'))
+    document.getElementById('template-modal').style.display = 'none';
+}
+function addExerciseRow() {
+  const container = document.getElementById('tmpl-exercises');
+  const row = document.createElement('div');
+  row.className = 'form-row';
+  row.style.alignItems = 'center';
+  row.innerHTML = `
+    <div class="form-group" style="flex:2;margin:0;">
+      <select class="form-select ex-pick">
+        ${_exercises.map(e => `<option value="${e.id}">${e.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group" style="flex:1;margin:0;">
+      <input class="form-input" type="number" placeholder="Sets" min="1" max="20" style="text-align:center;" />
+    </div>
+    <div class="form-group" style="flex:1;margin:0;">
+      <input class="form-input" type="text" placeholder="Reps (8-12)" style="text-align:center;" />
+    </div>
+    <button onclick="this.parentElement.remove()" style="color:var(--c-text-muted);font-size:18px;padding:0 6px;flex-shrink:0;">×</button>
+  `;
+  container.appendChild(row);
+}
+async function saveTemplate() {
+  const name = document.getElementById('tmpl-name').value.trim();
+  if (!name) { showToast('Enter a template name', 'error'); return; }
+
+  const rows = document.querySelectorAll('#tmpl-exercises .form-row');
+  const exercises = Array.from(rows).map((row, i) => {
+    const inputs = row.querySelectorAll('input');
+    return {
+      exercise_id:   parseInt(row.querySelector('.ex-pick').value),
+      order_index:   i,
+      target_sets:   parseInt(inputs[0].value) || null,
+      target_reps:   inputs[1].value.trim() || null,
+    };
+  });
+
+  const res = await fetch('/api/templates', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, notes: document.getElementById('tmpl-notes').value.trim(), exercises}),
+  });
+  if (res.status === 201) {
+    showToast('Template saved');
+    closeTemplateModal();
+    location.reload();
+  } else {
+    showToast('Error saving template', 'error');
+  }
+}
+
+// ── Workout history ────────────────────────────────────────────────────────
+async function loadHistory() {
+  const res = await fetch('/api/workouts?limit=10');
+  const data = await res.json();
+  const el = document.getElementById('workout-history');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state">No workouts logged yet.</div>';
+    return;
+  }
+  el.innerHTML = data.map(w => {
+    const d = new Date(w.started_at);
+    const date = d.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+    const dur = w.finished_at
+      ? Math.round((new Date(w.finished_at) - d) / 60000) + ' min'
+      : 'in progress';
+    return `<div class="log-item">
+      <div>
+        <div class="log-value" style="font-size:14px;">${w.name || 'Session'}</div>
+        <div class="log-date">${date} · ${dur} · ${w.set_count} sets</div>
+      </div>
+      <div style="font-size:13px;color:var(--c-text-muted);">
+        ${w.total_volume > 0 ? w.total_volume.toFixed(0) + ' kg vol' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+loadHistory();
+</script>
+{% endblock %}

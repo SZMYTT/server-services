@@ -146,3 +146,5 @@ ON CONFLICT (module) DO NOTHING;
 -- ── Migrations (safe to re-run) ───────────────────────────────
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS timing_breakdown JSONB;
 ALTER TABLE task_steps ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES tasks(id) ON DELETE CASCADE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS root_task_id UUID REFERENCES tasks(id) ON DELETE CASCADE;

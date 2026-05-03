@@ -166,6 +166,13 @@ async def code_task(
                 if len(content) > 3000:
                     content = content[:3000] + "\n... (truncated)"
                 parts.append(f"<{doc_name}>\n{content}\n</{doc_name}>")
+        
+        # Explicitly read cross-repository standards if they exist
+        for external_doc in (project_root.parent / "prismaOS" / "AGENTS.md", project_root.parent / "nnlos" / "ARCHITECTURE.md"):
+            if external_doc.exists():
+                content = external_doc.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"<{external_doc.name}>\n{content[:3000]}\n</{external_doc.name}>")
+
         parts.append(_SYSTEM_PROMPT)
         system = "\n\n".join(parts)
 

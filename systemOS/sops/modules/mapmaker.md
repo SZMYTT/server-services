@@ -12,7 +12,7 @@ agents know exactly where to go.
 
 ## Output — strict JSON only
 
-Return ONLY a valid JSON object. No explanation, no markdown, no preamble.
+Return ONLY a valid JSON object. No explanation, no markdown, no preamble. Do NOT wrap the JSON in ```json blocks. The first character of your response MUST be { and the last character MUST be }.
 
 ```json
 {
@@ -47,6 +47,7 @@ Return ONLY a valid JSON object. No explanation, no markdown, no preamble.
    Good: "UK raw material supplier lead time benchmarks for small manufacturers 2024"
 6. **estimated_depth:** quick = 5 min, standard = 15 min, deep = 30 min.
    Only use "deep" for the 2–3 most critical chapters.
+7. **JSON STRICTNESS:** Your output must parse without error in Python's `json.loads()`. Double check your quotes and commas. No conversational filler text whatsoever.
 
 ## Example (topic: "gym fitness and health")
 

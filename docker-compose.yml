@@ -28,10 +28,54 @@ services:
     ports:
       - "8001:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || curl -sf http://localhost:8000/api/v2/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: systemos-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ragflow:
+    image: infiniflow/ragflow:v0.18.0
+    container_name: systemos-ragflow
+    restart: unless-stopped
+    environment:
+      - RAGFLOW_OLLAMA_BASE_URL=${OLLAMA_URL:-http://100.76.139.41:11434}
+    volumes:
+      - ragflow_data:/ragflow/data
+      - ragflow_logs:/ragflow/logs
+    ports:
+      - "8088:80"   # Web UI + API
+    depends_on:
+      - qdrant
+    shm_size: '128mb'
+
+  neo4j:
+    image: neo4j:community
+    container_name: systemos-neo4j
+    restart: unless-stopped
+    environment:
+      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/password}
+      - NEO4J_PLUGINS=["apoc"]
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
 
   searxng:
     image: searxng/searxng:latest
@@ -92,6 +136,11 @@ services:
 volumes:
   postgres_data:
   chromadb_data:
+  qdrant_data:
+  ragflow_data:
+  ragflow_logs:
+  neo4j_data:
+  neo4j_logs:
   ntfy_data:
   gitea_data:
   caddy_data:

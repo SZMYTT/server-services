@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Manager's Report | HealthOS{% endblock %}
+
+{% block head %}
+<style>
+  .report-container {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-8);
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .report-header {
+    text-align: center;
+    margin-bottom: var(--sp-8);
+    border-bottom: 2px solid var(--c-border);
+    padding-bottom: var(--sp-6);
+  }
+  .report-title {
+    font-size: 2rem;
+    font-family: 'Playfair Display', serif;
+    margin-bottom: var(--sp-2);
+  }
+  .report-section {
+    margin-bottom: var(--sp-8);
+  }
+  .report-section h3 {
+    font-size: 1.25rem;
+    border-bottom: 1px solid var(--c-border);
+    padding-bottom: var(--sp-2);
+    margin-bottom: var(--sp-4);
+    color: var(--c-brand);
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-4);
+  }
+  .kpi-card {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: var(--sp-4);
+    text-align: center;
+  }
+  .kpi-card h4 {
+    font-size: 0.875rem;
+    color: var(--c-text-muted);
+    margin-bottom: var(--sp-2);
+  }
+  .kpi-card .val {
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+  @media print {
+    .app-sidebar, .app-header, .page-header {
+      display: none !important;
+    }
+    .app-main {
+      margin-left: 0 !important;
+      padding: 0 !important;
+    }
+    .report-container {
+      border: none;
+      box-shadow: none;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div class="header-content">
+    <h1 class="page-title">Manager's Report</h1>
+    <p class="page-subtitle">Weekly summary of health KPIs</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-secondary" onclick="window.print()">Export PDF / Print</button>
+  </div>
+</header>
+
+<div class="report-container">
+  <div class="report-header">
+    <h2 class="report-title">Weekly Health Report</h2>
+    <p class="text-muted">Week of {{ week_start }} to {{ week_end }}</p>
+  </div>
+
+  <div class="report-section">
+    <h3>Key Performance Indicators</h3>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <h4>Workouts Completed</h4>
+        <div class="val">{{ kpis.workouts }}</div>
+      </div>
+      <div class="kpi-card">
+        <h4>Total Volume (kg)</h4>
+        <div class="val">{{ kpis.volume|round(1) }}</div>
+      </div>
+      <div class="kpi-card">
+        <h4>Avg Weight (kg)</h4>
+        <div class="val">{{ kpis.avg_weight|round(1) if kpis.avg_weight else '--' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-section">
+    <h3>Workout Summary</h3>
+    {% if workouts %}
+    <ul class="list">
+      {% for w in workouts %}
+      <li style="padding: var(--sp-2) 0; border-bottom: 1px solid var(--c-border);">
+        <strong>{{ w.date }}</strong> - {{ w.name }} ({{ w.sets }} sets)
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted">No workouts logged this week.</p>
+    {% endif %}
+  </div>
+
+  <div class="report-section">
+    <h3>Nutrition Summary</h3>
+    {% if meals %}
+    <ul class="list">
+      {% for m in meals %}
+      <li style="padding: var(--sp-2) 0; border-bottom: 1px solid var(--c-border);">
+        <strong>{{ m.date }}</strong> - {{ m.type }}: {{ m.name }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted">No meals logged this week.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

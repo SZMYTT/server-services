@@ -9,6 +9,14 @@ from services.queue import set_task_status, update_module_estimate
 from mcp.etsy import fetch_unread_messages as etsy_fetch, send_reply as etsy_send
 from mcp.gmail import fetch_unread_emails as gmail_fetch, send_email as gmail_send
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('/home/szmyt/server-services')))
+try:
+    from fitOS.mcp.context_generator import generate_context_last_7_days
+except ImportError:
+    generate_context_last_7_days = None
+
 logger = logging.getLogger("prisma.agents.comms")
 
 async def run_comms_task(task: dict, routing: dict):
@@ -44,6 +52,40 @@ async def run_comms_task(task: dict, routing: dict):
                 output=f"Reply successfully sent to {platform}.\n\nInput explicitly processed: {user_input}", 
                 duration_ms=duration_ms,
                 model=routing["model"]
+            )
+            return
+
+        if workspace == "fitos":
+            # Phase 4: fitOS agent chat logic
+            step2_id = await start_step(task_id, 2, "generate_health_context", {})
+            if generate_context_last_7_days:
+                health_context = generate_context_last_7_days(format="markdown")
+            else:
+                health_context = "No context available."
+            await complete_step(task_id, 2, {"status": "context_generated"})
+            
+            step3_id = await start_step(task_id, 3, "draft_fitos_reply", {})
+            prompt = (
+                f"{sop}\n\n"
+                f"Health Context (Last 7 Days):\n{health_context}\n\n"
+                f"User Question: {user_input}\n\n"
+                "Please analyze the health data and answer the user's question as a supportive fitness coach."
+            )
+            async with httpx.AsyncClient(timeout=routing["timeout_secs"]) as client:
+                res = await client.post(
+                    f"{routing['ollama_url']}/api/generate",
+                    json={"model": routing["model"], "prompt": prompt, "stream": False}
+                )
+                if res.status_code == 200:
+                    draft = res.json().get("response", "Error generating response")
+                else:
+                    draft = "Failed to generate health insights."
+            
+            await complete_step(task_id, 3, {"status": "replied"})
+            
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            await set_task_status(
+                task_id, "done", output=draft, duration_ms=duration_ms, model=routing["model"]
             )
             return
 

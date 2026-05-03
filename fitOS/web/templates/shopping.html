@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Shopping List | HealthOS{% endblock %}
+
+{% block head %}
+<style>
+  .shopping-container {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-6);
+    max-width: 600px;
+  }
+  .aisle-section {
+    margin-bottom: var(--sp-6);
+  }
+  .aisle-title {
+    font-size: 1.25rem;
+    color: var(--c-brand);
+    border-bottom: 1px solid var(--c-border);
+    padding-bottom: var(--sp-2);
+    margin-bottom: var(--sp-4);
+  }
+  .item-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .item-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--c-bg);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div class="header-content">
+    <h1 class="page-title">Grocery List</h1>
+    <p class="page-subtitle">Based on your past 7 days meal plan</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-secondary" onclick="window.print()">Print List</button>
+  </div>
+</header>
+
+<div class="shopping-container">
+  {% for aisle, items in shopping_list.items() %}
+  <div class="aisle-section">
+    <h3 class="aisle-title">{{ aisle }}</h3>
+    <ul class="item-list">
+      {% for name, qty in items.items() %}
+      <li>
+        <span>{{ name|title }}</span>
+        <span class="text-muted">{{ qty|round(1) }}g</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <p class="text-muted">No items found for this week's plan.</p>
+  {% endfor %}
+</div>
+{% endblock %}

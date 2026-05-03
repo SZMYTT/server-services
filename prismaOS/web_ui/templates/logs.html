@@ -1,10 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Logs — PrismaOS{% endblock %}
-{% block page_title %}Task Logs{% endblock %}
-{% block page_subtitle %}<p class="page-subtitle">Full task history with step-level detail and retry controls.</p>{% endblock %}
+{% block page_title %}System Logs{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle">Live orchestrator output and full task history.</p>{% endblock %}
 
 {% block content %}
 
+{# ── Live Terminal ──────────────────────────────────────────── #}
+<div class="card terminal-card mb-24">
+  <div class="terminal-toolbar">
+    <div class="terminal-dots">
+      <span class="terminal-dot dot-red"></span>
+      <span class="terminal-dot dot-yellow"></span>
+      <span class="terminal-dot dot-green"></span>
+    </div>
+    <span class="terminal-title">prisma-orchestrator — live</span>
+    <div class="terminal-controls">
+      <span id="ws-status" class="terminal-ws-status connecting">connecting…</span>
+      <button class="btn-terminal-clear" onclick="clearTerminal()" title="Clear">⌫ clear</button>
+    </div>
+  </div>
+  <div class="terminal-body" id="terminal-body"></div>
+</div>
+
+{# ── Task History ───────────────────────────────────────────── #}
 <div class="card" style="padding:0; overflow:hidden;">
   {% if tasks %}
   <table class="data-table">
@@ -57,11 +75,59 @@
 
 {% block scripts %}
 <script>
+  // ── Task output toggle ──────────────────────────────────────
   function toggleOutput(row, taskId) {
     const outRow = document.getElementById('out-' + taskId);
-    if (outRow) {
-      outRow.style.display = outRow.style.display === 'none' ? '' : 'none';
-    }
+    if (outRow) outRow.style.display = outRow.style.display === 'none' ? '' : 'none';
   }
+
+  // ── Live terminal ───────────────────────────────────────────
+  const terminal = document.getElementById('terminal-body');
+  const wsStatus = document.getElementById('ws-status');
+  let ws = null;
+  let autoScroll = true;
+
+  terminal.addEventListener('scroll', () => {
+    const atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+    autoScroll = atBottom;
+  });
+
+  function appendLine(text) {
+    const line = document.createElement('div');
+    line.className = 'term-line';
+    // Colour-code by level keyword
+    if (/\[ERROR\]|\bERROR\b/.test(text))       line.classList.add('term-error');
+    else if (/\[WARNING\]|\bWARNING\b/.test(text)) line.classList.add('term-warn');
+    else if (/\[INFO\]|\bINFO\b/.test(text))    line.classList.add('term-info');
+    line.textContent = text;
+    terminal.appendChild(line);
+    if (autoScroll) terminal.scrollTop = terminal.scrollHeight;
+    // Keep DOM lean
+    while (terminal.children.length > 600) terminal.removeChild(terminal.firstChild);
+  }
+
+  function clearTerminal() {
+    terminal.innerHTML = '';
+  }
+
+  function setStatus(state) {
+    wsStatus.className = 'terminal-ws-status ' + state;
+    wsStatus.textContent = state === 'live' ? '● live' : state === 'connecting' ? 'connecting…' : '✕ disconnected';
+  }
+
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws/logs`);
+
+    ws.onopen  = () => setStatus('live');
+    ws.onclose = () => {
+      setStatus('disconnected');
+      setTimeout(connectWS, 4000);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (e) => appendLine(e.data);
+  }
+
+  connectWS();
 </script>
 {% endblock %}

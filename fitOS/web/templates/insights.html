@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Insights — HealthOS{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">Insights</h1>
+  <p class="page-subtitle">Sleep quality vs workout intensity — 30-day trends</p>
+</div>
+
+<!-- ── Summary strip ── -->
+<div class="stats-row" id="summary-strip">
+  <div class="stat-card">
+    <div class="stat-label">7-day avg sleep</div>
+    <div class="stat-value" id="s-sleep">—</div>
+    <div class="stat-unit">hrs</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">7-day avg steps</div>
+    <div class="stat-value" id="s-steps">—</div>
+    <div class="stat-unit">steps</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Resting HR</div>
+    <div class="stat-value" id="s-hr">—</div>
+    <div class="stat-unit">bpm</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Period</div>
+    <div class="stat-value" style="font-size:18px;" id="s-days">30</div>
+    <div class="stat-unit">days</div>
+  </div>
+</div>
+
+<!-- ── Range picker ── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+  <span style="font-size:12.5px;color:var(--c-text-muted);">Range:</span>
+  <button class="range-btn active" data-days="7"  onclick="setRange(this)">7d</button>
+  <button class="range-btn"        data-days="30" onclick="setRange(this)">30d</button>
+  <button class="range-btn"        data-days="60" onclick="setRange(this)">60d</button>
+  <button class="range-btn"        data-days="90" onclick="setRange(this)">90d</button>
+</div>
+
+<!-- ── Dual-axis chart ── -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">Sleep Quality vs Workout Volume</div>
+  <div class="insights-chart-wrap">
+    <canvas id="insightsChart"></canvas>
+    <div class="chart-empty" id="chart-empty" style="display:none;">
+      No data yet — complete some workouts and ensure Fitbit sync is active.
+    </div>
+  </div>
+  <div class="chart-legend">
+    <span class="legend-dot" style="background:#BFA880;"></span>Sleep (hrs, left axis)
+    <span class="legend-dot" style="background:#3A6B4A;margin-left:16px;"></span>Workout volume (kg, right axis)
+  </div>
+</div>
+
+<!-- ── Data table ── -->
+<div class="card">
+  <div class="card-title">Daily breakdown</div>
+  <div class="insights-table-wrap">
+    <table class="insights-table" id="insights-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Sleep</th>
+          <th>Volume</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <tr><td colspan="3" style="text-align:center;color:var(--c-text-muted);padding:16px;">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chart = null;
+let currentDays = 30;
+
+// ── Chart init ─────────────────────────────────────────────────────────────
+function buildChart(labels, sleepData, volumeData) {
+  const ctx = document.getElementById('insightsChart').getContext('2d');
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Sleep (hrs)',
+          data: sleepData,
+          borderColor: '#BFA880',
+          backgroundColor: 'rgba(191,168,128,0.12)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#BFA880',
+          tension: 0.35,
+          fill: true,
+          yAxisID: 'ySleep',
+          spanGaps: true,
+        },
+        {
+          label: 'Workout Volume (kg)',
+          data: volumeData,
+          borderColor: '#3A6B4A',
+          backgroundColor: 'rgba(58,107,74,0.10)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#3A6B4A',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'yVolume',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.yAxisID === 'ySleep')
+                return ` Sleep: ${ctx.parsed.y ?? '—'} hrs`;
+              return ` Volume: ${ctx.parsed.y ?? 0} kg`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(226,217,196,0.4)' },
+          ticks: { font: { size: 11 }, color: '#6B8578', maxTicksLimit: 10 },
+        },
+        ySleep: {
+          type: 'linear',
+          position: 'left',
+          grid: { color: 'rgba(226,217,196,0.4)' },
+          ticks: { font: { size: 11 }, color: '#8C7455', callback: v => v + 'h' },
+          title: { display: true, text: 'Sleep (hrs)', color: '#8C7455', font: { size: 11 } },
+        },
+        yVolume: {
+          type: 'linear',
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: { font: { size: 11 }, color: '#3A6B4A', callback: v => v + ' kg' },
+          title: { display: true, text: 'Volume (kg)', color: '#3A6B4A', font: { size: 11 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Load data ─────────────────────────────────────────────────────────────
+async function loadInsights(days) {
+  const res = await fetch(`/api/insights/chart?days=${days}`);
+  const data = await res.json();
+
+  const { chart: rows, summary } = data;
+
+  // Summary strip
+  document.getElementById('s-sleep').textContent =
+    summary['sleep_hrs'] ? summary['sleep_hrs'].toFixed(1) : '—';
+  document.getElementById('s-steps').textContent =
+    summary['steps'] ? Math.round(summary['steps']).toLocaleString() : '—';
+  document.getElementById('s-hr').textContent =
+    summary['resting_hr'] ? Math.round(summary['resting_hr']) : '—';
+  document.getElementById('s-days').textContent = days;
+
+  const empty = document.getElementById('chart-empty');
+  if (!rows.length) {
+    empty.style.display = 'flex';
+    document.getElementById('table-body').innerHTML =
+      '<tr><td colspan="3" style="text-align:center;color:var(--c-text-muted);padding:16px;">No data yet.</td></tr>';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const labels = rows.map(r => {
+    const d = new Date(r.date);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  });
+  const sleepData  = rows.map(r => r.sleep);
+  const volumeData = rows.map(r => r.volume);
+
+  buildChart(labels, sleepData, volumeData);
+
+  // Table — most recent first
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = [...rows].reverse().map(r => {
+    const d = new Date(r.date);
+    const date = d.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+    return `<tr>
+      <td>${date}</td>
+      <td>${r.sleep != null ? r.sleep + ' hrs' : '—'}</td>
+      <td>${r.volume > 0 ? r.volume + ' kg' : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Range picker ──────────────────────────────────────────────────────────
+function setRange(btn) {
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentDays = parseInt(btn.dataset.days);
+  loadInsights(currentDays);
+}
+
+loadInsights(currentDays);
+</script>
+{% endblock %}

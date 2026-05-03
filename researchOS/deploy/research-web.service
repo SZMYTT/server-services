@@ -1,0 +1,15 @@
+[Unit]
+Description=ResearchOS Web UI
+After=network.target
+
+[Service]
+User=szmyt
+Group=szmyt
+WorkingDirectory=/home/szmyt/server-services/researchOS
+EnvironmentFile=/home/szmyt/server-services/researchOS/.env
+ExecStart=/home/szmyt/server-services/researchOS/venv/bin/python3 main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

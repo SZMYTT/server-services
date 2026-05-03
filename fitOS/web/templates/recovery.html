@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Recovery | HealthOS{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.recovery-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) { .recovery-grid { grid-template-columns: 1fr; } }
+
+/* ── Readiness gauge ─────────────────────────────────────── */
+.readiness-gauge-wrap {
+  position: relative; width: 180px; margin: 0 auto 14px;
+}
+.readiness-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.readiness-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.6rem; font-weight: 700;
+  color: var(--c-text-primary); line-height: 1;
+}
+.readiness-denom { font-size: 12px; color: var(--c-text-muted); }
+.readiness-status {
+  text-align: center; font-size: 13.5px; font-weight: 600;
+  margin-bottom: 16px;
+}
+.status-optimal  { color: var(--c-success); }
+.status-moderate { color: var(--c-warning); }
+.status-poor     { color: var(--c-error); }
+
+/* ── CNS alert ───────────────────────────────────────────── */
+.cns-alert {
+  display: none;
+  padding: 10px 14px; border-radius: 6px; font-size: 12.5px;
+  background: rgba(139,58,42,0.10); color: var(--c-error);
+  border: 1px solid rgba(139,58,42,0.25);
+  margin-bottom: 14px;
+}
+.cns-alert.show { display: block; }
+.cns-alert strong { display: block; margin-bottom: 2px; }
+
+/* ── Biometric rows ──────────────────────────────────────── */
+.bio-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.bio-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px;
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border);
+  border-radius: 6px; font-size: 13px;
+}
+.bio-row-left { display: flex; align-items: center; gap: 8px; }
+.bio-icon { font-size: 14px; }
+.bio-name { color: var(--c-text-muted); font-size: 12px; }
+.bio-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px; font-weight: 700;
+  color: var(--c-text-primary);
+}
+.bio-unit { font-size: 11px; color: var(--c-text-muted); margin-left: 2px; }
+
+/* ── Charts panel ────────────────────────────────────────── */
+.charts-col { display: flex; flex-direction: column; gap: 16px; }
+
+.rec-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 760px) { .rec-grid { grid-template-columns: 1fr; } }
+
+.rec-card {
+  background: var(--c-input-bg);
+  border: 1px solid var(--c-card-border);
+  border-radius: 8px; padding: 14px;
+}
+.rec-icon { font-size: 20px; margin-bottom: 6px; }
+.rec-title { font-size: 13px; font-weight: 600; color: var(--c-text-primary); margin-bottom: 3px; }
+.rec-body  { font-size: 12px; color: var(--c-text-muted); line-height: 1.5; }
+
+.trend-chart-wrap { position: relative; height: 150px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+  <div>
+    <h1 class="page-title">Recovery</h1>
+    <p class="page-subtitle">Biometric readiness — updated daily from Fitbit</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-secondary" onclick="toggleManualLog()">Log Manual</button>
+    <button class="btn btn-primary" onclick="triggerSync()" id="syncBtn">Sync Fitbit</button>
+  </div>
+</div>
+
+<div class="recovery-grid">
+
+  <!-- Left panel -->
+  <div class="card" style="position:sticky;top:0;">
+    <div class="stat-label" style="margin-bottom:16px;">Today's Readiness</div>
+
+    <div class="cns-alert" id="cnsAlert">
+      <strong>⚠ CNS Fatigue Detected</strong>
+      HRV is significantly below your 7-day average. Reduce today's training volume.
+    </div>
+
+    <div class="readiness-gauge-wrap">
+      <canvas id="gaugeCanvas" height="180"></canvas>
+      <div class="readiness-center">
+        <span class="readiness-num" id="scoreNum">—</span>
+        <span class="readiness-denom">/ 100</span>
+      </div>
+    </div>
+
+    <div class="readiness-status" id="scoreStatus">Loading…</div>
+
+    <div class="bio-rows">
+      <div class="bio-row">
+        <div class="bio-row-left"><span class="bio-icon">💤</span><span class="bio-name">Sleep</span></div>
+        <div><span class="bio-value" id="bSleep">—</span><span class="bio-unit">hrs</span></div>
+      </div>
+      <div class="bio-row">
+        <div class="bio-row-left"><span class="bio-icon">❤️</span><span class="bio-name">Resting HR</span></div>
+        <div><span class="bio-value" id="bHR">—</span><span class="bio-unit">bpm</span></div>
+      </div>
+      <div class="bio-row">
+        <div class="bio-row-left"><span class="bio-icon">📊</span><span class="bio-name">HRV</span></div>
+        <div><span class="bio-value" id="bHRV">—</span><span class="bio-unit">ms</span></div>
+      </div>
+      <div class="bio-row">
+        <div class="bio-row-left"><span class="bio-icon">👟</span><span class="bio-name">Steps</span></div>
+        <div><span class="bio-value" id="bSteps">—</span></div>
+      </div>
+    </div>
+
+    <!-- Manual log -->
+    <div id="manualLogPanel" style="display:none;padding-top:12px;border-top:1px solid var(--c-card-border);">
+      <div class="form-group">
+        <label class="form-label">Metric</label>
+        <select class="form-select" id="manualMetric">
+          <option value="hrv_ms">HRV (ms)</option>
+          <option value="sleep_hrs">Sleep (hrs)</option>
+          <option value="resting_hr">Resting HR (bpm)</option>
+          <option value="steps">Steps</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Value</label>
+          <input class="form-input" type="number" id="manualVal" step="0.1" placeholder="0">
+        </div>
+        <div style="align-self:flex-end;">
+          <button class="btn btn-primary" onclick="submitManual()">Log</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: charts + recommendations -->
+  <div class="charts-col">
+
+    <div class="card">
+      <div class="card-title">Sleep Quality — 14 days</div>
+      <div class="trend-chart-wrap">
+        <canvas id="sleepChart"></canvas>
+        <div class="chart-empty" id="sleepEmpty" style="display:none;">No sleep data — connect Fitbit</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">HRV — 14 days</div>
+      <div class="trend-chart-wrap">
+        <canvas id="hrvChart"></canvas>
+        <div class="chart-empty" id="hrvEmpty" style="display:none;">No HRV data — log manually</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Resting Heart Rate — 14 days</div>
+      <div class="trend-chart-wrap">
+        <canvas id="hrChart"></canvas>
+        <div class="chart-empty" id="hrEmpty" style="display:none;">No HR data yet</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Today's Recommendations</div>
+      <div class="rec-grid" id="recGrid">
+        <div class="rec-card"><div class="rec-icon">⏳</div><div class="rec-title">Loading…</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let gaugeChart = null;
+let trendCharts = {};
+
+document.addEventListener('DOMContentLoaded', () => {
+  initGauge();
+  loadRecovery();
+});
+
+// ── Gauge ─────────────────────────────────────────────────────
+function initGauge() {
+  const ctx = document.getElementById('gaugeCanvas').getContext('2d');
+  gaugeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { datasets: [{ data:[0,100],
+      backgroundColor: [getComputedStyle(document.documentElement).getPropertyValue('--c-success').trim()||'#3A6B4A', 'rgba(22,41,32,0.08)'],
+      borderWidth:0, borderRadius:5 }] },
+    options: { cutout:'72%', rotation:-110, circumference:220,
+               plugins:{legend:{display:false},tooltip:{enabled:false}}, animation:{duration:700} }
+  });
+}
+
+function updateGauge(score) {
+  const color = score>=75 ? '#3A6B4A' : score>=50 ? '#9B7A2A' : '#8B3A2A';
+  gaugeChart.data.datasets[0].backgroundColor[0] = color;
+  gaugeChart.data.datasets[0].data = [score, 100-score];
+  gaugeChart.update();
+
+  const numEl = document.getElementById('scoreNum');
+  numEl.textContent = Math.round(score);
+  numEl.style.color = color;
+
+  const stEl = document.getElementById('scoreStatus');
+  if (score >= 75)      { stEl.textContent = '✅ Optimal — Push hard today';       stEl.className = 'readiness-status status-optimal'; }
+  else if (score >= 50) { stEl.textContent = '⚠ Moderate — Train with care';       stEl.className = 'readiness-status status-moderate'; }
+  else                  { stEl.textContent = '🔴 Poor — Prioritise recovery today'; stEl.className = 'readiness-status status-poor'; }
+}
+
+// ── Load ──────────────────────────────────────────────────────
+async function loadRecovery() {
+  const d = await fetch('/api/recovery/today').then(r=>r.json()).catch(()=>({}));
+  updateGauge(d.readiness_score ?? 50);
+  document.getElementById('bSleep').textContent = d.sleep_hrs  != null ? d.sleep_hrs.toFixed(1)      : '—';
+  document.getElementById('bHR').textContent    = d.resting_hr != null ? Math.round(d.resting_hr)    : '—';
+  document.getElementById('bHRV').textContent   = d.hrv_ms     != null ? Math.round(d.hrv_ms)        : '—';
+  document.getElementById('bSteps').textContent = d.steps      != null ? Math.round(d.steps).toLocaleString() : '—';
+  if (d.cns_fatigue) document.getElementById('cnsAlert').classList.add('show');
+  renderRecs(d);
+  loadTrends();
+}
+
+function renderRecs(d) {
+  const score = d.readiness_score ?? 50;
+  const recs = [];
+  if (score>=75) {
+    recs.push({ icon:'🏋️', title:'Full Volume', body:'All systems go — execute your planned session at full intensity.' });
+    recs.push({ icon:'🥩', title:'Refuel Well', body:'Hit your protein target. Your body is primed to build.' });
+  } else if (score>=50) {
+    recs.push({ icon:'📉', title:'Reduce Volume', body:'Drop to ~80% of planned sets. Form over intensity today.' });
+    recs.push({ icon:'😴', title:'Prioritise Sleep', body:'Aim for 8+ hours tonight. Avoid screens before bed.' });
+  } else {
+    recs.push({ icon:'🚶', title:'Active Recovery', body:'No heavy lifting. 20–30 min walk or light mobility only.' });
+    recs.push({ icon:'💧', title:'Hydrate & Eat', body:'Prioritise water, carbs, and sleep above all else.' });
+  }
+  if (d.sleep_hrs != null && d.sleep_hrs < 6)
+    recs.push({ icon:'⏰', title:'Sleep Debt', body:`Only ${d.sleep_hrs.toFixed(1)}h logged. Consider a short nap.` });
+  if (d.cns_fatigue)
+    recs.push({ icon:'🧠', title:'CNS Fatigue', body:'HRV below baseline. Avoid new PRs today.' });
+
+  document.getElementById('recGrid').innerHTML = recs.map(r=>`
+    <div class="rec-card">
+      <div class="rec-icon">${r.icon}</div>
+      <div class="rec-title">${r.title}</div>
+      <div class="rec-body">${r.body}</div>
+    </div>`).join('');
+}
+
+// ── Trend charts ──────────────────────────────────────────────
+async function loadTrends() {
+  const d = await fetch('/api/recovery/trends?days=14').then(r=>r.json()).catch(()=>({sleep:[],hrv:[],resting_hr:[]}));
+  renderTrend('sleepChart','sleepEmpty', d.sleep,      'Sleep (hrs)', '#8C7455');
+  renderTrend('hrvChart',  'hrvEmpty',   d.hrv,        'HRV (ms)',    '#3A6B4A');
+  renderTrend('hrChart',   'hrEmpty',    d.resting_hr, 'HR (bpm)',    '#9B7A2A');
+}
+
+function renderTrend(cId, eId, values, label, color) {
+  const hasData = values && values.some(v => v!=null);
+  const emptyEl = document.getElementById(eId);
+  if (!hasData) { emptyEl.style.display='flex'; return; }
+  emptyEl.style.display='none';
+
+  const labels = values.map((_,i) => {
+    const d = new Date(); d.setDate(d.getDate()-(values.length-1-i));
+    return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  });
+  if (trendCharts[cId]) trendCharts[cId].destroy();
+  trendCharts[cId] = new Chart(document.getElementById(cId).getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets:[{
+      label, data:values, borderColor:color,
+      backgroundColor: color+'22', borderWidth:2,
+      pointRadius:3, pointBackgroundColor:color,
+      tension:0.35, fill:true, spanGaps:true
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color:'#6B8578'} },
+        y:{ grid:{color:'rgba(226,217,196,0.4)'}, ticks:{font:{size:10},color} }
+      }
+    }
+  });
+}
+
+// ── Manual log ────────────────────────────────────────────────
+function toggleManualLog() {
+  const p = document.getElementById('manualLogPanel');
+  p.style.display = p.style.display==='none' ? '' : 'none';
+}
+async function submitManual() {
+  const metric = document.getElementById('manualMetric').value;
+  const val    = parseFloat(document.getElementById('manualVal').value);
+  if (isNaN(val)) { showToast('Enter a value','error'); return; }
+  const units  = {hrv_ms:'ms',sleep_hrs:'hrs',resting_hr:'bpm',steps:'steps'};
+  await fetch('/api/metrics',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({metric_type:metric, value:val, unit:units[metric]})
+  });
+  document.getElementById('manualVal').value='';
+  toggleManualLog(); showToast('Logged'); loadRecovery();
+}
+
+// ── Sync ──────────────────────────────────────────────────────
+async function triggerSync() {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled=true; btn.textContent='Syncing…';
+  const d = await fetch('/api/sync/fitbit',{method:'POST'}).then(r=>r.json());
+  btn.disabled=false; btn.textContent='Sync Fitbit';
+  showToast(d.error ? `Sync: ${d.error}` : `Synced ${d.synced?.length??0} metrics`);
+  if (!d.error) loadRecovery();
+}
+</script>
+{% endblock %}

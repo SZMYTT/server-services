@@ -14,7 +14,7 @@ import logging
 import os
 from pathlib import Path
 
-logger = logging.getLogger("prisma.sop_assembler")
+logger = logging.getLogger("system.sop_assembler")
 
 # ── Project root (one level up from this file) ────────────────
 
@@ -73,6 +73,8 @@ def assemble_sop(
     module: str,
     workspace: str,
     persona: str | None = None,
+    sops_root: Path | None = None,
+    **kwargs
 ) -> str:
     """
     Return the assembled SOP string for a task.
@@ -82,14 +84,21 @@ def assemble_sop(
     Layer 2 falls back to task_type if no module-specific SOP exists.
     Layer 3 is omitted gracefully if the workspace profile is missing.
 
+    sops_root: override the base sops directory (default: systemOS/sops/).
+               Pass a project-specific sops/ path so the bridge can supply
+               prismaOS workspace profiles to the researchOS pipeline.
+
     Usage:
         sop = assemble_sop("research", "research", "property")
         sop = assemble_sop("research", "research", "property", persona="architect")
+        sop = assemble_sop("research", "research", "property",
+                           sops_root=Path("/srv/prismaOS/sops"))
     """
+    root = sops_root or _SOPS
     parts: list[str] = []
 
     # Layer 1 — system (always)
-    layer1 = _read(_layer1_path())
+    layer1 = _read(root / "system" / "core.md")
     if layer1:
         parts.append(layer1)
     else:
@@ -101,7 +110,7 @@ def assemble_sop(
 
     # Layer 1.5 — persona (Expert Panel only: architect / auditor / refiner)
     if persona:
-        layer15 = _read(_layer15_path(persona))
+        layer15 = _read(root / "personas" / f"{persona}.md")
         if layer15:
             parts.append(layer15)
             logger.info("[SOP] injected persona layer: %s", persona)
@@ -109,9 +118,9 @@ def assemble_sop(
             logger.warning("[SOP] persona SOP not found: %s", persona)
 
     # Layer 2 — module (try module name, fall back to task_type)
-    layer2 = _read(_layer2_path(module))
+    layer2 = _read(root / "modules" / f"{module}.md")
     if layer2 is None and module != task_type:
-        layer2 = _read(_layer2_path(task_type))
+        layer2 = _read(root / "modules" / f"{task_type}.md")
 
     if layer2:
         parts.append(layer2)
@@ -122,13 +131,11 @@ def assemble_sop(
         )
 
     # Layer 3 — workspace profile
-    layer3 = _read(_layer3_path(workspace))
+    layer3 = _read(root / "workspaces" / workspace / "profile.md") if workspace else None
     if layer3:
         parts.append(layer3)
-    else:
-        logger.warning(
-            "[SOP] No Layer 3 found for workspace=%s — skipping", workspace
-        )
+    elif workspace:
+        logger.warning("[SOP] No Layer 3 found for workspace=%s — skipping", workspace)
 
     assembled = "\n\n---\n\n".join(parts)
 
@@ -139,22 +146,24 @@ def assemble_sop(
     return assembled
 
 
-def list_available_sops() -> dict:
+def list_available_sops(sops_root: Path | None = None) -> dict:
     """
     Return a summary of which SOPs are available.
     Useful for health checks and the web UI.
     """
+    root = sops_root or _SOPS
+
     modules = [
-        p.stem for p in (_SOPS / "modules").glob("*.md")
-    ] if (_SOPS / "modules").exists() else []
+        p.stem for p in (root / "modules").glob("*.md")
+    ] if (root / "modules").exists() else []
 
     workspaces = [
         p.parent.name
-        for p in (_SOPS / "workspaces").glob("*/profile.md")
-    ] if (_SOPS / "workspaces").exists() else []
+        for p in (root / "workspaces").glob("*/profile.md")
+    ] if (root / "workspaces").exists() else []
 
     return {
-        "system_core":  _layer1_path().exists(),
+        "system_core":  (root / "system" / "core.md").exists(),
         "modules":      sorted(modules),
         "workspaces":   sorted(workspaces),
     }

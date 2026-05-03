@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% block title %}Planner | HealthOS{% endblock %}
+
+{% block head %}
+<style>
+/* ── Tabs ────────────────────────────────────────────────── */
+.planner-tabs { display:flex; gap:0; margin-bottom:24px; border-bottom:2px solid var(--c-card-border); }
+.ptab {
+  padding:10px 20px; font-size:13px; font-weight:500;
+  color:var(--c-text-muted); background:none; border:none;
+  border-bottom:2px solid transparent; margin-bottom:-2px;
+  cursor:pointer; transition:color 0.15s, border-color 0.15s;
+}
+.ptab.active { color:var(--c-gold-dark); border-bottom-color:var(--c-gold-dark); }
+.ptab-panel { display:none; }
+.ptab-panel.active { display:block; }
+
+/* ── Week nav ────────────────────────────────────────────── */
+.week-nav {
+  display:flex; align-items:center; gap:12px; margin-bottom:20px;
+}
+.week-nav button { height:32px; padding:0 12px; }
+.week-label { font-family:'Playfair Display',serif; font-size:15px; font-weight:600; color:var(--c-text-primary); }
+
+/* ── Workout week grid ───────────────────────────────────── */
+.workout-week {
+  display:grid; grid-template-columns:repeat(7,1fr); gap:10px;
+}
+.workout-day {
+  background:var(--c-card); border:1px solid var(--c-card-border);
+  border-radius:8px; padding:12px 10px; min-height:120px;
+  display:flex; flex-direction:column; gap:6px;
+}
+.workout-day-name {
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.8px; color:var(--c-text-muted); margin-bottom:4px;
+}
+.workout-chip {
+  background:var(--c-header); color:var(--c-text-on-dark);
+  border-radius:5px; padding:6px 8px; font-size:11.5px; font-weight:500;
+  cursor:pointer; transition:opacity 0.15s;
+}
+.workout-chip:hover { opacity:0.8; }
+.workout-chip.rest {
+  background:var(--c-input-bg); color:var(--c-text-muted);
+  border:1px dashed var(--c-card-border);
+}
+.add-workout-slot {
+  font-size:11px; color:var(--c-gold-dark); background:none;
+  border:1px dashed var(--c-card-border); border-radius:5px;
+  padding:5px; cursor:pointer; width:100%; transition:border-color 0.15s;
+}
+.add-workout-slot:hover { border-color:var(--c-gold); }
+@media(max-width:860px){ .workout-week{grid-template-columns:repeat(4,1fr);} }
+@media(max-width:600px){ .workout-week{grid-template-columns:1fr 1fr;} }
+
+/* ── Meal grid ───────────────────────────────────────────── */
+.meal-week {
+  display:grid;
+  grid-template-columns: 90px repeat(7,1fr);
+  gap:6px; font-size:12px;
+}
+.meal-col-head {
+  text-align:center; font-size:10px; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.6px;
+  color:var(--c-text-muted); padding:4px 0;
+}
+.meal-row-label {
+  font-size:11px; font-weight:600; color:var(--c-text-muted);
+  text-transform:capitalize; padding-top:8px;
+}
+.meal-cell {
+  background:var(--c-card); border:1px solid var(--c-card-border);
+  border-radius:6px; padding:6px; min-height:68px;
+  display:flex; flex-direction:column; gap:3px;
+}
+.meal-entry {
+  background:var(--c-input-bg); border-radius:4px;
+  padding:3px 6px; font-size:11px; font-weight:500;
+  color:var(--c-text-primary); display:flex; justify-content:space-between; align-items:center;
+}
+.meal-entry-remove {
+  font-size:12px; color:var(--c-text-muted); background:none;
+  border:none; cursor:pointer; line-height:1; padding:0;
+}
+.meal-entry-remove:hover { color:var(--c-error); }
+.meal-entry-kcal { font-size:10px; color:var(--c-text-muted); }
+.add-meal-cell-btn {
+  font-size:10px; color:var(--c-gold-dark); background:none;
+  border:none; cursor:pointer; text-decoration:underline; margin-top:auto;
+}
+
+/* ── Day macro strip ─────────────────────────────────────── */
+.day-macro-strip {
+  display:grid; grid-template-columns:90px repeat(7,1fr);
+  gap:6px; margin-top:8px;
+}
+.day-macro-cell {
+  background:var(--c-input-bg); border:1px solid var(--c-card-border);
+  border-radius:5px; padding:5px 6px; font-size:10.5px; text-align:center;
+}
+.day-macro-total { font-weight:700; color:var(--c-text-primary); }
+
+/* ── Prep list ───────────────────────────────────────────── */
+.prep-table { width:100%; border-collapse:collapse; font-size:13px; }
+.prep-table th {
+  text-align:left; padding:7px 12px; font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.6px; color:var(--c-text-muted);
+  border-bottom:1px solid var(--c-card-border);
+}
+.prep-table td { padding:8px 12px; border-bottom:1px solid rgba(226,217,196,0.5); }
+.prep-table tr:last-child td { border-bottom:none; }
+.prep-checked { text-decoration:line-through; color:var(--c-text-muted); }
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(22,41,32,0.45); z-index:100; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Planner</h1>
+  <p class="page-subtitle">Workout week, meal plan & prep shopping list</p>
+</div>
+
+<!-- Tab bar -->
+<div class="planner-tabs">
+  <button class="ptab active" onclick="switchTab('workout',this)">🏋️ Workout Week</button>
+  <button class="ptab" onclick="switchTab('meal',this)">🍽️ Meal Plan</button>
+  <button class="ptab" onclick="switchTab('prep',this)">🛒 Meal Prep</button>
+</div>
+
+<!-- Week nav (shared) -->
+<div class="week-nav">
+  <button class="btn btn-secondary" onclick="shiftWeek(-1)">← Prev</button>
+  <span class="week-label" id="weekLabel"></span>
+  <button class="btn btn-secondary" onclick="shiftWeek(1)">Next →</button>
+  <button class="btn btn-primary" onclick="goThisWeek()">This Week</button>
+</div>
+
+<!-- ── TAB: Workout ── -->
+<div class="ptab-panel active" id="panel-workout">
+  <div class="workout-week" id="workoutGrid"></div>
+</div>
+
+<!-- ── TAB: Meal Plan ── -->
+<div class="ptab-panel" id="panel-meal">
+  <div class="meal-week" id="mealGrid"></div>
+  <div class="day-macro-strip" id="macroStrip"></div>
+</div>
+
+<!-- ── TAB: Meal Prep ── -->
+<div class="ptab-panel" id="panel-prep">
+  <div style="display:flex;gap:16px;align-items:start;flex-wrap:wrap;">
+    <div class="card" style="flex:1;min-width:300px;">
+      <div class="card-title">Shopping List</div>
+      <p style="font-size:12px;color:var(--c-text-muted);margin-bottom:14px;">
+        Auto-generated from all recipes in this week's meal plan. Tick items as you shop.
+      </p>
+      <div id="prepList"><div style="color:var(--c-text-muted);font-size:13px;">No meal plan entries with recipes yet.</div></div>
+    </div>
+    <div class="card" style="width:220px;">
+      <div class="card-title">Daily Macro Summary</div>
+      <div id="prepDayMacros"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Workout slot modal -->
+<div class="modal-overlay" id="workoutModal">
+  <div class="modal-box" style="width:340px;">
+    <div class="modal-header">
+      <span class="modal-title" id="workoutModalTitle">Plan Day</span>
+      <button class="modal-close" onclick="closeWorkoutModal()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Workout Template</label>
+      <select class="form-select" id="wModalTemplate">
+        <option value="">— Rest / Off —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label (optional override)</label>
+      <input class="form-input" type="text" id="wModalLabel" placeholder="e.g. Cardio, Active Rest">
+    </div>
+    <div class="form-row" style="margin-top:4px;">
+      <button class="btn btn-secondary btn-full" onclick="closeWorkoutModal()">Cancel</button>
+      <button class="btn btn-primary btn-full" onclick="saveWorkoutSlot()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meal entry modal -->
+<div class="modal-overlay" id="mealModal">
+  <div class="modal-box" style="width:380px;">
+    <div class="modal-header">
+      <span class="modal-title" id="mealModalTitle">Add Meal</span>
+      <button class="modal-close" onclick="closeMealModal()">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Recipe</label>
+      <select class="form-select" id="mModalRecipe" onchange="onRecipeChange()">
+        <option value="">— custom / free text —</option>
+      </select>
+    </div>
+    <div class="form-group" id="mCustomWrap">
+      <label class="form-label">Meal name</label>
+      <input class="form-input" type="text" id="mModalCustom" placeholder="e.g. Scrambled eggs">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Servings</label>
+      <input class="form-input" type="number" id="mModalServings" value="1" step="0.5" min="0.5">
+    </div>
+    <div id="mManualMacrosWrap">
+      <div class="form-row">
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">kcal</label>
+          <input class="form-input" type="number" id="mModalKcal" placeholder="0">
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Protein g</label>
+          <input class="form-input" type="number" id="mModalProtein" placeholder="0">
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Carbs g</label>
+          <input class="form-input" type="number" id="mModalCarbs" placeholder="0">
+        </div>
+        <div class="form-group" style="flex:1;margin-bottom:0;">
+          <label class="form-label">Fat g</label>
+          <input class="form-input" type="number" id="mModalFat" placeholder="0">
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">Leave blank if recipe selected — calculated automatically.</p>
+    </div>
+    <div class="form-row" style="margin-top:12px;">
+      <button class="btn btn-secondary btn-full" onclick="closeMealModal()">Cancel</button>
+      <button class="btn btn-primary btn-full" onclick="saveMealEntry()">Add</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const MEALS = ['breakfast','lunch','dinner','snack'];
+let currentMonday = getMonday(new Date());
+let activeTab = 'workout';
+let planId = null;
+let mealData = [];         // current week entries
+let workoutData = [];      // current week slots
+let templates = [];        // workout templates
+let recipes   = [];        // all recipes
+let modalDay  = null;      // day index being edited (workout)
+let mModalDay = null;      // day index (meal)
+let mModalMealType = null;
+
+// ── Helpers ────────────────────────────────────────────────────
+function getMonday(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  dt.setDate(dt.getDate() + diff);
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+function weekStart() {
+  return currentMonday.toISOString().slice(0,10);
+}
+function dayDate(i) {
+  const d = new Date(currentMonday);
+  d.setDate(d.getDate() + i);
+  return d;
+}
+function fmtDate(d) {
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+
+// ── Week nav ───────────────────────────────────────────────────
+function shiftWeek(n) {
+  currentMonday.setDate(currentMonday.getDate() + n*7);
+  refreshAll();
+}
+function goThisWeek() { currentMonday = getMonday(new Date()); refreshAll(); }
+function refreshAll() {
+  const start = currentMonday;
+  const end   = new Date(start); end.setDate(end.getDate()+6);
+  document.getElementById('weekLabel').textContent =
+    `${fmtDate(start)} – ${fmtDate(end)}`;
+  if (activeTab==='workout') loadWorkout();
+  if (activeTab==='meal')    loadMeal();
+  if (activeTab==='prep')    loadPrep();
+}
+
+// ── Tabs ───────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  activeTab = name;
+  document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.ptab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+  if (name==='workout') loadWorkout();
+  if (name==='meal')    loadMeal();
+  if (name==='prep')    loadPrep();
+}
+
+// ── Init ───────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await Promise.all([loadTemplates(), loadRecipes()]);
+  refreshAll();
+});
+
+async function loadTemplates() {
+  const r = await fetch('/api/workouts/templates').then(r=>r.json()).catch(()=>[]);
+  templates = Array.isArray(r) ? r : [];
+  const sel = document.getElementById('wModalTemplate');
+  templates.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.name;
+    sel.appendChild(o);
+  });
+}
+
+async function loadRecipes() {
+  const r = await fetch('/api/recipes').then(r=>r.json()).catch(()=>[]);
+  recipes = Array.isArray(r) ? r : [];
+  const sel = document.getElementById('mModalRecipe');
+  recipes.forEach(rec => {
+    const o = document.createElement('option');
+    o.value = rec.id; o.textContent = rec.name;
+    sel.appendChild(o);
+  });
+}
+
+// ── WORKOUT TAB ────────────────────────────────────────────────
+async function loadWorkout() {
+  workoutData = await fetch(`/api/planner/workout?week_start=${weekStart()}`).then(r=>r.json()).catch(()=>[]);
+  renderWorkout();
+}
+
+function renderWorkout() {
+  const grid = document.getElementById('workoutGrid');
+  grid.innerHTML = '';
+  const map = {};
+  workoutData.forEach(s => { map[s.day] = s; });
+
+  DAYS.forEach((name, i) => {
+    const slot = map[i];
+    const d = dayDate(i);
+    const isToday = d.toDateString() === new Date().toDateString();
+    const div = document.createElement('div');
+    div.className = 'workout-day';
+    if (isToday) div.style.borderColor = 'var(--c-gold)';
+
+    let inner = `<div class="workout-day-name">${name} ${fmtDate(d)}</div>`;
+    if (slot) {
+      const label = slot.template_name || slot.label || 'Session';
+      const isRest = !slot.template_id;
+      inner += `<div class="workout-chip${isRest?' rest':''}" onclick="openWorkoutModal(${i})">
+        ${isRest ? '😴 ' : '🏋️ '}${label}
+      </div>`;
+    } else {
+      inner += `<button class="add-workout-slot" onclick="openWorkoutModal(${i})">+ Assign</button>`;
+    }
+    div.innerHTML = inner;
+    grid.appendChild(div);
+  });
+}
+
+function openWorkoutModal(dayIdx) {
+  modalDay = dayIdx;
+  const slot = workoutData.find(s => s.day === dayIdx);
+  document.getElementById('workoutModalTitle').textContent = `Plan ${DAYS[dayIdx]}`;
+  document.getElementById('wModalTemplate').value = slot?.template_id || '';
+  document.getElementById('wModalLabel').value     = slot?.label || '';
+  document.getElementById('workoutModal').classList.add('open');
+}
+function closeWorkoutModal() { document.getElementById('workoutModal').classList.remove('open'); }
+
+async function saveWorkoutSlot() {
+  const template_id = +document.getElementById('wModalTemplate').value || null;
+  const label       = document.getElementById('wModalLabel').value.trim();
+  await fetch('/api/planner/workout', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ week_start: weekStart(), day_of_week: modalDay, template_id, label })
+  });
+  closeWorkoutModal();
+  showToast('Saved');
+  loadWorkout();
+}
+
+// ── MEAL TAB ───────────────────────────────────────────────────
+async function loadMeal() {
+  const data = await fetch(`/api/planner/meal?week_start=${weekStart()}`).then(r=>r.json()).catch(()=>({plan_id:null,entries:[]}));
+  planId    = data.plan_id;
+  mealData  = data.entries || [];
+  renderMealGrid();
+}
+
+function renderMealGrid() {
+  // Build lookup: day → meal_type → [entries]
+  const lookup = {};
+  mealData.forEach(e => {
+    if (!lookup[e.day]) lookup[e.day] = {};
+    if (!lookup[e.day][e.meal_type]) lookup[e.day][e.meal_type] = [];
+    lookup[e.day][e.meal_type].push(e);
+  });
+
+  const grid = document.getElementById('mealGrid');
+  grid.innerHTML = '';
+
+  // Header row
+  grid.appendChild(makeEl('div', 'meal-col-head', ''));
+  DAYS.forEach((d,i) => {
+    const dt = dayDate(i);
+    const isToday = dt.toDateString() === new Date().toDateString();
+    const el = makeEl('div','meal-col-head', `${d}<br><small>${fmtDate(dt)}</small>`);
+    if (isToday) el.style.color = 'var(--c-gold-dark)';
+    grid.appendChild(el);
+  });
+
+  // One row per meal type
+  MEALS.forEach(mt => {
+    grid.appendChild(makeEl('div','meal-row-label', mt));
+    for (let d=0;d<7;d++) {
+      const cell = document.createElement('div');
+      cell.className = 'meal-cell';
+      const entries = lookup[d]?.[mt] || [];
+      entries.forEach(e => {
+        const chip = document.createElement('div');
+        chip.className = 'meal-entry';
+        const name = e.recipe_name || e.custom_name || 'Meal';
+        chip.innerHTML = `<span title="${name}">${name.length>18?name.slice(0,16)+'…':name}</span>
+          <button class="meal-entry-remove" onclick="removeMealEntry(${e.id})">×</button>`;
+        if (e.kcal) {
+          const kcalEl = makeEl('div','meal-entry-kcal',`${e.kcal} kcal`);
+          chip.appendChild(kcalEl);
+        }
+        cell.appendChild(chip);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-meal-cell-btn';
+      addBtn.textContent = '+ Add';
+      addBtn.onclick = () => openMealModal(d, mt);
+      cell.appendChild(addBtn);
+      grid.appendChild(cell);
+    }
+  });
+
+  // Macro strip
+  const strip = document.getElementById('macroStrip');
+  strip.innerHTML = '';
+  strip.appendChild(makeEl('div','','')); // spacer
+  for (let d=0;d<7;d++) {
+    const entries = mealData.filter(e => e.day === d);
+    const kcal = entries.reduce((s,e)=>s+(e.kcal||0),0);
+    const prot = entries.reduce((s,e)=>s+(e.protein_g||0),0);
+    const cell = makeEl('div','day-macro-cell',
+      `<div class="day-macro-total">${Math.round(kcal)} kcal</div>
+       <div style="font-size:10px;color:var(--c-text-muted)">${Math.round(prot)}g protein</div>`);
+    strip.appendChild(cell);
+  }
+}
+
+function makeEl(tag, cls, html) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  el.innerHTML = html;
+  return el;
+}
+
+function openMealModal(dayIdx, mealType) {
+  mModalDay = dayIdx; mModalMealType = mealType;
+  document.getElementById('mealModalTitle').textContent = `Add to ${DAYS[dayIdx]} — ${mealType}`;
+  document.getElementById('mModalRecipe').value = '';
+  document.getElementById('mModalCustom').value = '';
+  document.getElementById('mModalServings').value = '1';
+  document.getElementById('mModalKcal').value = '';
+  document.getElementById('mModalProtein').value = '';
+  document.getElementById('mModalCarbs').value = '';
+  document.getElementById('mModalFat').value = '';
+  document.getElementById('mCustomWrap').style.display = '';
+  document.getElementById('mManualMacrosWrap').style.display = '';
+  document.getElementById('mealModal').classList.add('open');
+}
+function closeMealModal() { document.getElementById('mealModal').classList.remove('open'); }
+
+function onRecipeChange() {
+  const hasRecipe = !!document.getElementById('mModalRecipe').value;
+  document.getElementById('mCustomWrap').style.display = hasRecipe ? 'none' : '';
+  document.getElementById('mManualMacrosWrap').style.display = hasRecipe ? 'none' : '';
+}
+
+async function saveMealEntry() {
+  if (!planId) { showToast('Plan not loaded','error'); return; }
+  const recipe_id   = +document.getElementById('mModalRecipe').value || null;
+  const custom_name = document.getElementById('mModalCustom').value.trim();
+  const servings    = +document.getElementById('mModalServings').value || 1;
+
+  if (!recipe_id && !custom_name) { showToast('Enter a meal name or pick a recipe','error'); return; }
+
+  const body = {
+    plan_id: planId, day_of_week: mModalDay, meal_type: mModalMealType,
+    servings, recipe_id, custom_name,
+    kcal:      +document.getElementById('mModalKcal').value    || null,
+    protein_g: +document.getElementById('mModalProtein').value || null,
+    carbs_g:   +document.getElementById('mModalCarbs').value   || null,
+    fat_g:     +document.getElementById('mModalFat').value     || null,
+  };
+  const res = await fetch('/api/planner/meal/entry', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  if (res.status === 201) {
+    closeMealModal(); showToast('Added'); loadMeal();
+  } else {
+    showToast('Error saving','error');
+  }
+}
+
+async function removeMealEntry(id) {
+  await fetch(`/api/planner/meal/entry/${id}`, { method:'DELETE' });
+  showToast('Removed'); loadMeal();
+}
+
+// ── PREP TAB ───────────────────────────────────────────────────
+async function loadPrep() {
+  const data = await fetch(`/api/planner/prep?week_start=${weekStart()}`).then(r=>r.json()).catch(()=>({items:[],days:[]}));
+  renderPrepList(data.items);
+  renderPrepDays(data.days);
+}
+
+function renderPrepList(items) {
+  const el = document.getElementById('prepList');
+  if (!items.length) {
+    el.innerHTML = '<div style="color:var(--c-text-muted);font-size:13px;">No recipe-based meals planned yet.</div>';
+    return;
+  }
+  el.innerHTML = `<table class="prep-table">
+    <thead><tr><th></th><th>Ingredient</th><th>Amount</th></tr></thead>
+    <tbody>
+      ${items.map((item,i) => `
+        <tr id="prepRow${i}">
+          <td><input type="checkbox" onclick="togglePrepRow(${i})"></td>
+          <td id="prepName${i}">${item.name}</td>
+          <td id="prepAmt${i}">${item.total_g}g</td>
+        </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+function togglePrepRow(i) {
+  ['prepName'+i,'prepAmt'+i].forEach(id => {
+    document.getElementById(id).classList.toggle('prep-checked');
+  });
+}
+
+function renderPrepDays(days) {
+  const el = document.getElementById('prepDayMacros');
+  if (!days.length) { el.innerHTML = '<div style="color:var(--c-text-muted);font-size:12px;">No data yet.</div>'; return; }
+  el.innerHTML = days.map(d => `
+    <div class="log-item" style="margin-bottom:6px;flex-direction:column;align-items:flex-start;">
+      <div style="font-weight:600;font-size:12px;color:var(--c-text-primary);margin-bottom:3px;">${DAYS[d.day]}</div>
+      <div style="font-size:11.5px;color:var(--c-text-muted);">
+        ${d.kcal||'—'} kcal &nbsp;·&nbsp; ${d.protein_g}g P &nbsp;·&nbsp; ${d.carbs_g}g C &nbsp;·&nbsp; ${d.fat_g}g F
+      </div>
+    </div>`).join('');
+}
+</script>
+{% endblock %}

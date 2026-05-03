@@ -1,9 +1,11 @@
 import sys
 import os
 import json
+import asyncio
 import datetime
 from pathlib import Path
-from fastapi import FastAPI, Request, Form, Response, Depends, status
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, Form, Response, Depends, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from web_ui.auth import (
@@ -25,7 +27,17 @@ from services.erp_notifier import (
     notify_new_auction, notify_auction_won, notify_watchlist_update,
 )
 
-app = FastAPI(title="PrismaOS Web UI")
+from mcp.graph import graph_db
+from web_ui import log_stream
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await graph_db.connect()
+    asyncio.create_task(log_stream.tail_journal())
+    yield
+    await graph_db.close()
+
+app = FastAPI(title="PrismaOS Web UI", lifespan=lifespan)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -376,6 +388,35 @@ def fetch_all_finance_summary() -> list[dict]:
         s["name"] = WORKSPACE_META.get(ws, {}).get("name", ws.title())
         result.append(s)
     return result
+
+# --- WebSocket: live log stream ---
+
+@app.websocket("/ws/logs")
+async def ws_logs(websocket: WebSocket):
+    user = get_current_user(websocket)
+    if not user:
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    for msg in list(log_stream.RING):
+        try:
+            await websocket.send_text(msg)
+        except Exception:
+            return
+    log_stream.CONNECTIONS.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        log_stream.CONNECTIONS.discard(websocket)
+
+
+@app.get("/api/logs/recent")
+async def api_logs_recent(user: dict = Depends(require_user)):
+    return {"lines": list(log_stream.RING)}
+
 
 # --- HTML Routes ---
 
@@ -1067,6 +1108,7 @@ class TaskCreatePayload(BaseModel):
     input: str
     workspace: str
     user_name: str
+    depth: str = "standard"
     urgent: bool = False
 
 # ── Workspace module settings API ─────────────────────────────
@@ -1132,8 +1174,8 @@ async def api_create_task(payload: TaskCreatePayload, user: dict = Depends(requi
             if payload.workspace not in access and "all_workspaces" not in access:
                 return {"success": False, "error": "Unauthorized workspace access"}
 
-        lane = "urgent" if payload.urgent else None
-        
+        lane = "urgent" if (payload.urgent or payload.depth == "thorough") else None
+
         task_id = await add_task(
             workspace=payload.workspace,
             user=user.get("username", "web_user"),
@@ -1142,7 +1184,8 @@ async def api_create_task(payload: TaskCreatePayload, user: dict = Depends(requi
             module=payload.module,
             input=payload.input,
             trigger_type="web",
-            queue_lane=lane
+            queue_lane=lane,
+            depth=payload.depth,
         )
         return {"success": True, "task_id": task_id}
     except Exception as e:

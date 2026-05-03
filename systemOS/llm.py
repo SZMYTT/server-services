@@ -6,8 +6,9 @@ Shared module. Import from any project:
 
 Priority:
   1. If OLLAMA_URL is set → use Ollama (configurable model)
-  2. Else if ANTHROPIC_API_KEY is set → use Anthropic
-  3. Else raise clearly
+  2. Else if OLLAMA_MAC_URL is set → use Ollama (prismaOS compat alias)
+  3. Else if ANTHROPIC_API_KEY is set → use Anthropic
+  4. Else raise clearly
 
 Usage:
     from systemOS.llm import complete, complete_ex
@@ -35,10 +36,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.3")
-
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL_FAST = "claude-haiku-4-5-20251001"
 ANTHROPIC_MODEL_FULL = "claude-sonnet-4-6"
 
@@ -50,10 +47,19 @@ class LLMResult(TypedDict):
     backend: str      # "ollama" | "anthropic"
 
 
+def _ollama_url() -> str:
+    """Return the Ollama base URL, falling back to OLLAMA_MAC_URL for prismaOS compat."""
+    return (
+        os.getenv("OLLAMA_URL")
+        or os.getenv("OLLAMA_MAC_URL")
+        or ""
+    )
+
+
 def _backend() -> str:
-    if OLLAMA_URL:
+    if _ollama_url():
         return "ollama"
-    if ANTHROPIC_API_KEY:
+    if os.getenv("ANTHROPIC_API_KEY"):
         return "anthropic"
     raise RuntimeError(
         "No LLM backend configured. Set OLLAMA_URL (for local Ollama) or ANTHROPIC_API_KEY."
@@ -66,6 +72,7 @@ async def complete(
     fast: bool = False,
     max_tokens: int = 2000,
     model: str | None = None,
+    response_format: dict | None = None,
 ) -> str:
     """
     Send messages to the configured LLM. Returns the response text.
@@ -78,7 +85,7 @@ async def complete(
         model:      override the model for this call (Ollama only)
     """
     result = await complete_ex(messages=messages, system=system, fast=fast,
-                               max_tokens=max_tokens, model=model)
+                               max_tokens=max_tokens, model=model, response_format=response_format)
     return result["text"]
 
 
@@ -88,6 +95,7 @@ async def complete_ex(
     fast: bool = False,
     max_tokens: int = 2000,
     model: str | None = None,
+    response_format: dict | None = None,
 ) -> LLMResult:
     """
     Like complete() but returns the full result including token counts and model info.
@@ -99,7 +107,7 @@ async def complete_ex(
         messages = [{"role": "system", "content": system}] + messages
 
     if backend == "ollama":
-        return await _ollama(messages, max_tokens, model_override=model)
+        return await _ollama(messages, max_tokens, model_override=model, response_format=response_format)
     else:
         return await _anthropic(messages, fast, max_tokens)
 
@@ -108,18 +116,24 @@ async def _ollama(
     messages: list[dict],
     max_tokens: int,
     model_override: str | None = None,
+    response_format: dict | None = None,
 ) -> LLMResult:
-    model = model_override or OLLAMA_MODEL
+    model = model_override or os.getenv("OLLAMA_MODEL", "llama3.3")
+    base_url = _ollama_url()
     logger.info("[LLM] ollama %s — %d messages", model, len(messages))
-    async with httpx.AsyncClient(timeout=600.0) as client:
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }
+    if response_format:
+        payload["response_format"] = response_format
+
+    async with httpx.AsyncClient(timeout=1200.0) as client:
         resp = await client.post(
-            f"{OLLAMA_URL}/v1/chat/completions",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": False,
-                "max_tokens": max_tokens,
-            },
+            f"{base_url}/v1/chat/completions",
+            json=payload,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -175,8 +189,8 @@ async def _anthropic(
         else:
             filtered.append(m)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    kwargs = dict(model=model, max_tokens=max_tokens, messages=filtered)
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+    kwargs = dict(model=model, max_tokens=8192, messages=filtered)
     if system_text:
         kwargs["system"] = system_text
 

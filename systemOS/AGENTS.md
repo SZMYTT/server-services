@@ -111,7 +111,7 @@ Fallback on Mac unreachable: queue the task and wait. Do NOT silently drop it.
 - Schema is in `db/schema.sql` — update it when adding columns or tables
 - Always add columns with `DEFAULT` values so old rows aren't broken
 - Never `DROP` a column without a migration path
-- Task status flow: `queued → pending_approval → approved → running → done/failed/declined`
+- Task status flow: `queued → pending_approval → approved → running ↔ awaiting_children/ready_to_synthesize → done/failed/declined`
 
 ---
 

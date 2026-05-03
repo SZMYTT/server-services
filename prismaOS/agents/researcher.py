@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import time
-import httpx
 import json
 
 from services.sop_assembler import assemble_sop
 from services.checkpointer import start_step, complete_step, fail_step
 from services.queue import set_task_status, update_module_estimate
 from mcp.search import run_search
+from systemOS.llm import complete_with_usage, log_llm_call
 
 logger = logging.getLogger("prisma.agents.researcher")
 
@@ -39,31 +39,23 @@ async def run_research_task(task: dict, routing: dict):
         )
         
         queries = []
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{routing['ollama_url']}/api/generate",
-                json={
-                    "model": routing["model"],
-                    "prompt": queries_prompt,
-                    "stream": False,
-                    "format": "json"
-                }
+        try:
+            usage = await complete_with_usage(
+                messages=[{"role": "user", "content": queries_prompt}],
+                fast=True,
+                max_tokens=500,
             )
-            if resp.status_code == 200:
-                try:
-                    response_text = resp.json().get("response", "[]").strip()
-                    queries = json.loads(response_text)
-                    if not isinstance(queries, list):
-                        queries = [str(queries)]
-                except json.JSONDecodeError:
-                    logger.warning("[RESEARCHER] Failed to decode JSON queries, falling back")
-                    queries = [user_input]
-            else:
-                await fail_step(task_id, 2, f"Failed to generate queries. Status: {resp.status_code}")
-                # Fallback to direct query
-                queries = [user_input]
-                
-        await complete_step(task_id, 2, {"queries": queries})
+            log_llm_call(usage, service="prisma.researcher", call_type="query_gen")
+            raw = usage["text"].strip()
+            # Strip accidental markdown fences
+            import re
+            raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw, flags=re.MULTILINE).strip()
+            parsed = json.loads(raw)
+            queries = parsed if isinstance(parsed, list) else [str(parsed)]
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning("[RESEARCHER] Failed to parse queries (%s), falling back to raw input", e)
+            queries = [user_input]
+
         
         # Step 3: Run Searches
         step3_id = await start_step(task_id, 3, "web_search", {"queries": queries})
@@ -92,24 +84,18 @@ async def run_research_task(task: dict, routing: dict):
             "Write the final research report following the exact output format specified in the SOP."
         )
         
-        final_report = ""
-        total_tokens_approx = int(len(final_prompt)/4)
-        
-        async with httpx.AsyncClient(timeout=routing["timeout_secs"]) as client:
-            resp = await client.post(
-                f"{routing['ollama_url']}/api/generate",
-                json={
-                    "model": routing["model"],
-                    "prompt": final_prompt,
-                    "stream": False
-                }
+        try:
+            usage = await complete_with_usage(
+                messages=[{"role": "user", "content": final_prompt}],
+                fast=False,
+                max_tokens=4000,
             )
-            if resp.status_code == 200:
-                resp_json = resp.json()
-                final_report = resp_json.get("response", "")
-                total_tokens_approx += resp_json.get("eval_count", 0)
-            else:
-                raise Exception(f"Failed to generate final report. Status: {resp.status_code}")
+            log_llm_call(usage, service="prisma.researcher", call_type="synthesis")
+            final_report = usage["text"]
+            total_tokens_approx = usage["input_tokens"] + usage["output_tokens"]
+        except Exception as e:
+            raise Exception(f"Failed to generate final report: {e}") from e
+
                 
         await complete_step(task_id, 4, {"status": "synthesis complete"})
         

@@ -61,6 +61,9 @@ def _layer2_path(module: str) -> Path:
 def _layer3_path(workspace: str) -> Path:
     return _SOPS / "workspaces" / workspace / "profile.md"
 
+def _preferences_path(workspace: str) -> Path:
+    return _SOPS / "workspaces" / workspace / "preferences.md"
+
 
 # ── Public API ────────────────────────────────────────────────
 
@@ -114,6 +117,12 @@ def assemble_sop(
         logger.warning(
             "[SOP] No Layer 3 found for workspace=%s — skipping", workspace
         )
+
+    # Layer 3.5 — workspace preferences
+    prefs = _read(_preferences_path(workspace))
+    if prefs:
+        parts.append(prefs)
+        logger.debug("[SOP] Loaded preferences for workspace=%s", workspace)
 
     assembled = "\n\n---\n\n".join(parts)
 

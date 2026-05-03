@@ -1,0 +1,43 @@
+{
+  "name": "HealthOS",
+  "short_name": "HealthOS",
+  "description": "Your personal health & fitness operating system",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["health", "fitness"],
+  "shortcuts": [
+    {
+      "name": "Log Food",
+      "url": "/app/log?tab=food",
+      "description": "Quickly log a meal"
+    },
+    {
+      "name": "Start Workout",
+      "url": "/app/workout",
+      "description": "Begin a workout session"
+    },
+    {
+      "name": "Log Water",
+      "url": "/app/log?tab=water",
+      "description": "Log water intake"
+    }
+  ]
+}

@@ -33,28 +33,34 @@
 
 {% if flash %}<div class="alert alert-{{ flash.type }}" style="margin-bottom:16px;">{{ flash.message }}</div>{% endif %}
 
-<!-- Stats -->
-<div class="stat-row" style="margin-bottom:24px;">
-  <div class="stat-card">
-    <div class="stat-label">Total topics</div>
-    <div class="stat-number">{{ total_count }}</div>
+<!-- Mission stats strip -->
+<div class="mission-stats">
+  <div class="mission-stat">
+    <div class="mission-stat-label">Done</div>
+    <div class="mission-stat-value" id="stat-done" style="{% if done_count > 0 %}color:var(--c-success);{% endif %}">{{ done_count }}/{{ total_count }}</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Reports done</div>
-    <div class="stat-number" id="stat-done" style="{% if done_count > 0 %}color:var(--c-success);{% endif %}">{{ done_count }}</div>
+  <div class="mission-stat">
+    <div class="mission-stat-label">Pending</div>
+    <div class="mission-stat-value" id="stat-pending" style="{% if pending_count > 0 %}color:var(--c-gold-dark);{% endif %}">{{ pending_count }}</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Pending</div>
-    <div class="stat-number" id="stat-pending" style="{% if pending_count > 0 %}color:var(--c-gold-dark);{% endif %}">{{ pending_count }}</div>
+  <div class="mission-stat">
+    <div class="mission-stat-label">Stage</div>
+    <div class="mission-stat-value" id="stat-stage" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">idle</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Errors</div>
-    <div class="stat-number" style="{% if error_count > 0 %}color:var(--c-error);{% endif %}">{{ error_count }}</div>
+  <div class="mission-stat">
+    <div class="mission-stat-label">Elapsed</div>
+    <div class="mission-stat-value" id="stat-elapsed-strip">—</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Running</div>
-    <div class="stat-number" id="stat-running" style="{% if running_count > 0 %}color:var(--c-info);{% endif %}">{{ running_count }}</div>
+  <div class="mission-stat">
+    <div class="mission-stat-label">Tokens</div>
+    <div class="mission-stat-value" id="stat-tokens-strip">—</div>
   </div>
+  {% if error_count > 0 %}
+  <div class="mission-stat">
+    <div class="mission-stat-label">Errors</div>
+    <div class="mission-stat-value" style="color:var(--c-error);">{{ error_count }}</div>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Two-column layout -->
@@ -97,6 +103,8 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c-error)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             {% elif t.status == 'running' %}
               <div class="rdot"></div>
+            {% elif t.status == 'map' %}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-gold)" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
             {% else %}
               <div style="width:6px;height:6px;border-radius:50%;background:var(--c-card-border);"></div>
             {% endif %}
@@ -107,6 +115,7 @@
             <div class="qrow-title" title="{{ t.topic }}">{{ t.topic }}</div>
             <div class="qrow-meta">
               <span class="qrow-cat">{{ t.category }}</span>
+              {% if t.depth and t.depth != 'standard' %}<span class="qrow-depth-badge qrow-depth-{{ t.depth }}">{{ t.depth }}</span>{% endif %}
               {% if t.created_at %}<span>{{ t.created_at.strftime('%d %b') }}</span>{% endif %}
               {% if t.completed_at %}<span>· {{ t.completed_at.strftime('%d %b') }}</span>{% endif %}
             </div>
@@ -123,6 +132,9 @@
               <button class="btn btn-secondary btn-sm" onclick="openEdit({{ t.id }})">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
+              <button class="btn btn-sm" title="Clone topic" style="color:var(--c-text-muted);border:1px solid var(--c-card-border);" onclick="cloneTopic({{ t.id }})">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
               <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/delete" onsubmit="deleteTopic(event,{{ t.id }})">
                 <button type="submit" class="btn btn-sm" style="color:var(--c-text-muted);border:1px solid var(--c-card-border);">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
@@ -136,14 +148,22 @@
                 Report
               </a>
               {% endif %}
+              <button class="btn btn-sm" title="Clone topic" style="color:var(--c-text-muted);border:1px solid var(--c-card-border);" onclick="cloneTopic({{ t.id }})">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
               <span class="badge badge-done">done</span>
             {% elif t.status == 'error' %}
               <form method="POST" action="/p/{{ project.slug }}/topic/{{ t.id }}/retry">
                 <button type="submit" class="btn btn-secondary btn-sm">Retry</button>
               </form>
+              <button class="btn btn-sm" title="Clone topic" style="color:var(--c-text-muted);border:1px solid var(--c-card-border);" onclick="cloneTopic({{ t.id }})">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
               <span class="badge badge-error">error</span>
             {% elif t.status == 'running' %}
               <span class="badge badge-running" id="rbadge-{{ t.id }}">running</span>
+            {% elif t.status == 'map' %}
+              <span class="badge" style="background:rgba(191,168,128,0.15);color:var(--c-gold-dark);">expanded</span>
             {% endif %}
           </div>
 
@@ -163,6 +183,9 @@
               <div class="qrow-edit-inner">
                 <select class="form-select" name="category">
                   {% for cat in categories %}<option value="{{ cat }}" {% if cat == t.category %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+                </select>
+                <select class="form-select" name="depth" style="max-width:140px;">
+                  {% for key, label, est in depth_choices %}<option value="{{ key }}" {% if key == (t.depth or 'standard') %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
                 <button type="submit" class="btn btn-sm btn-primary">Save</button>
                 <button type="button" class="btn btn-sm btn-secondary" onclick="closeEdit({{ t.id }})">Cancel</button>
@@ -260,6 +283,11 @@
           </div>
         </div>
 
+        <div style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap; align-items: flex-start;">
+          <div id="react-token-sidebar"></div>
+          <div id="react-node-map" style="flex:1; min-width:300px;"></div>
+        </div>
+
         <!-- Done notice -->
         <div id="eng-done-notice" style="display:none;padding:10px 16px;background:rgba(58,107,74,0.08);border-top:1px solid rgba(58,107,74,0.2);font-size:12px;color:var(--c-success);">
           ✓ Run complete —
@@ -282,6 +310,21 @@
       </form>
     </div>
 
+    <!-- Knowledge search -->
+    <div class="engine-card">
+      <div class="engine-card-header" style="border-bottom:1px solid var(--c-card-border);">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-muted)" stroke-width="2" style="flex-shrink:0;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="engine-card-title" style="font-size:12px;font-family:'DM Sans',sans-serif;font-weight:600;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:0.7px;">Knowledge Search</span>
+      </div>
+      <div style="padding:12px 14px 14px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="search-input" class="form-input" placeholder="Search past reports…" style="flex:1;font-size:12.5px;" onkeydown="if(event.key==='Enter')runSearch()" />
+          <button class="btn btn-sm btn-secondary" onclick="runSearch()" style="white-space:nowrap;">Search</button>
+        </div>
+        <div id="search-results"></div>
+      </div>
+    </div>
+
   </div><!-- /engine-col -->
 
 </div><!-- /project-layout -->
@@ -289,6 +332,220 @@
 
 {% block scripts %}
 <script>
+// ── Depth config (from server) ────────────────────────────────
+const DEPTH_CONFIG = {{ depth_config | tojson }};
+
+function updateDepthHint(key) {
+  const el = document.getElementById('depth-hint');
+  if (!el) return;
+  const cfg = DEPTH_CONFIG[key];
+  if (!cfg) { el.textContent = ''; return; }
+  el.textContent = `${cfg.n_queries} queries · ${cfg.max_scrape} pages scraped · ${cfg.synthesis_tokens} token synthesis`;
+}
+// Initialise on load
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('queue-depth');
+  if (sel) updateDepthHint(sel.value);
+});
+
+// ── Expert Panel checkbox ─────────────────────────────────────
+// Inject [EP]\n prefix into sop_hint on form submit so _execute_run can detect it.
+document.getElementById('form-queue-topic')?.addEventListener('submit', function() {
+  const expertCheck = document.getElementById('expert-panel-check');
+  const sopHint = document.getElementById('queue-sop-hint');
+  if (expertCheck && expertCheck.checked && sopHint && !sopHint.value.startsWith('[EP]')) {
+    sopHint.value = '[EP]\n' + sopHint.value;
+  }
+}, true);  // capture phase — runs before persona hint injection
+
+// ── Mapmaker decompose ────────────────────────────────────────
+let _decomposeData = null;
+
+function startDecompose() {
+  const topic = (document.getElementById('queue-topic-input') || {}).value;
+  if (!topic || !topic.trim()) {
+    document.getElementById('queue-topic-input')?.focus();
+    return;
+  }
+  const btn = document.getElementById('decompose-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M3 12a9 9 0 019-9"/></svg>Decomposing…';
+
+  fetch('/api/map', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({topic: topic.trim()}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>Decompose';
+    if (data.error) { alert('Decompose failed: ' + data.error); return; }
+    _decomposeData = data;
+    _renderChapterView(data);
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>Decompose';
+    alert('Decompose request failed.');
+  });
+}
+
+function _renderChapterView(data) {
+  const topic = (document.getElementById('queue-topic-input') || {}).value || '';
+  document.getElementById('chapter-topic-label').textContent =
+    data.total_chapters + ' chapters across ' + (data.volumes || []).length + ' volumes for: ' + topic.substring(0, 80);
+
+  const list = document.getElementById('chapter-list');
+  let html = '';
+  (data.volumes || []).forEach((vol, vi) => {
+    html += `<div style="margin:6px 0 2px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.7px;color:var(--c-text-muted);padding-top:6px;">${esc(vol.title || 'Volume ' + (vi + 1))}</div>`;
+    (vol.chapters || []).forEach((ch, ci) => {
+      const id = `chk-${vi}-${ci}`;
+      const priority = ch.priority || 'medium';
+      const depth = ch.estimated_depth || 'standard';
+      const pColor = priority === 'high' ? 'var(--c-success)' : priority === 'low' ? 'var(--c-text-muted)' : 'var(--c-gold-dark)';
+      html += `<label for="${id}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid var(--c-card-border);cursor:pointer;">
+        <input type="checkbox" id="${id}" class="chapter-chk" checked
+               data-query="${escAttr(ch.research_query)}" data-depth="${escAttr(depth)}"
+               onchange="_updateChapterCount()" style="margin-top:2px;flex-shrink:0;" />
+        <span style="flex:1;font-size:12.5px;line-height:1.4;">${esc(ch.title || ch.research_query)}</span>
+        <span style="font-size:11px;white-space:nowrap;color:${pColor}">${priority} · ${depth}</span>
+      </label>`;
+    });
+  });
+  list.innerHTML = html || '<div style="padding:16px;text-align:center;color:var(--c-text-muted);font-size:12.5px;">No chapters returned.</div>';
+  _updateChapterCount();
+
+  document.getElementById('modal-form-wrap').style.display = 'none';
+  document.getElementById('chapter-view').style.display = '';
+  document.getElementById('modal-queue-title').textContent = 'Select chapters to queue';
+}
+
+function _updateChapterCount() {
+  const n = document.querySelectorAll('.chapter-chk:checked').length;
+  const btn = document.getElementById('queue-chapters-btn');
+  if (btn) btn.textContent = `Queue ${n} chapter${n !== 1 ? 's' : ''}`;
+}
+
+function toggleAllChapters() {
+  const checks = [...document.querySelectorAll('.chapter-chk')];
+  const allChecked = checks.every(c => c.checked);
+  checks.forEach(c => { c.checked = !allChecked; });
+  _updateChapterCount();
+}
+
+function backToForm() {
+  document.getElementById('chapter-view').style.display = 'none';
+  document.getElementById('modal-form-wrap').style.display = '';
+  document.getElementById('modal-queue-title').textContent = 'Queue research topic';
+}
+
+function queueSelected() {
+  const category = document.querySelector('#modal-new-topic [name="category"]')?.value || 'general';
+  const chapters = [...document.querySelectorAll('.chapter-chk:checked')].map(c => ({
+    topic:    c.dataset.query,
+    category,
+    depth:    c.dataset.depth,
+    sop_hint: null,
+  }));
+  if (!chapters.length) return;
+
+  const btn = document.getElementById('queue-chapters-btn');
+  btn.disabled = true;
+  btn.textContent = 'Queuing…';
+
+  const slug = {{ project.slug | tojson }};
+  fetch('/p/' + slug + '/queue-chapters', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+    body:    JSON.stringify({chapters}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.queued) { backToForm(); closeModal('modal-new-topic'); location.reload(); }
+    else { btn.disabled = false; _updateChapterCount(); }
+  })
+  .catch(() => { btn.disabled = false; _updateChapterCount(); });
+}
+
+function escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// ── Clone (pre-fill queue modal) ─────────────────────────────
+function cloneTopic(id) {
+  fetch('/api/topics/' + id, {headers:{Accept:'application/json'}})
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) return;
+      const topicEl = document.getElementById('queue-topic-input');
+      if (topicEl) topicEl.value = d.topic || '';
+      const catEl = document.querySelector('#modal-new-topic [name="category"]');
+      if (catEl) catEl.value = d.category || 'general';
+      const depthEl = document.querySelector('#modal-new-topic [name="depth"]');
+      if (depthEl) depthEl.value = d.depth || 'standard';
+      const sopEl = document.getElementById('queue-sop-hint');
+      if (sopEl) sopEl.value = d.sop_hint || '';
+      openModal('modal-new-topic');
+    })
+    .catch(() => openModal('modal-new-topic'));
+}
+
+// ── Knowledge search ─────────────────────────────────────────
+function runSearch() {
+  const q = (document.getElementById('search-input') || {}).value;
+  if (!q || !q.trim()) return;
+  const out = document.getElementById('search-results');
+  out.innerHTML = '<div style="font-size:12px;color:var(--c-text-muted);padding:6px 0;">Searching…</div>';
+  const slug = {{ project.slug | tojson }};
+  fetch('/api/search?q=' + encodeURIComponent(q.trim()) + '&project=' + encodeURIComponent(slug))
+    .then(r => r.json())
+    .then(d => {
+      if (d.error || !d.results || !d.results.length) {
+        out.innerHTML = '<div style="font-size:12px;color:var(--c-text-muted);padding:6px 0;">' + esc(d.error || 'No results found.') + '</div>';
+        return;
+      }
+      out.innerHTML = d.results.map(r =>
+        '<div style="padding:8px 0;border-bottom:1px solid var(--c-card-border);">' +
+          '<div style="font-size:12px;font-weight:600;color:var(--c-text-primary);">' + esc(r.topic) +
+            ' <span style="font-weight:400;color:var(--c-text-muted);">· ' + esc(r.section || '') + '</span></div>' +
+          '<div style="font-size:11.5px;color:var(--c-text-secondary);margin-top:3px;line-height:1.5;">' + esc((r.text || '').substring(0, 220)) + '…</div>' +
+        '</div>'
+      ).join('');
+    })
+    .catch(() => { out.innerHTML = '<div style="font-size:12px;color:var(--c-error);padding:6px 0;">Search unavailable.</div>'; });
+}
+
+// ── Persona picker ───────────────────────────────────────────
+const PERSONA_HINTS = {
+  architect:          "Produce a comprehensive analytical report. Structure: Executive Summary, Key Findings (3-5 themes), Deep-Dive Analysis, Trends & Implications, Actionable Recommendations, and Sources. Prioritise strategic insight and practical applicability.",
+  scout:              "Focus exclusively on supplier/vendor identification. Structure: Supplier Overview, Product Range & MOQ, Pricing Tiers, Lead Times, UK Availability, Certifications (ISO, UKCA, etc.), Risk Flags, Alternatives, and Confidence Score.",
+  auditor:            "Focus on legal, regulatory and compliance requirements. Structure: Regulatory Overview, Applicable Standards (ISO, CE, UKCA, GDPR, etc.), Compliance Gaps, Risk Assessment, Required Actions, Cost of Compliance, and Key References.",
+  strategist:         "Focus on competitive positioning and strategic opportunity. Structure: Market Landscape, Key Players & Competitive Moats, Entry Barriers, Whitespace Opportunities, Strategic Options (with trade-offs), Risk Factors, and Recommended Approach.",
+  procurement_expert: "Focus on procurement-specific intelligence. Structure: Supplier Overview, Full Product Catalogue, Pricing Tiers & Volume Breaks, MOQ & Lead Times, Payment Terms, Incoterms & Logistics, Certifications (ISO, BRC, etc.), Risk Flags, and UK-Compliant Alternatives.",
+  analyst:            "Focus on quantitative data and benchmarks. Structure: Key Metrics Dashboard, Benchmark Comparison Table, Trend Analysis (3-5 year), Statistical Findings, Data Quality Notes, and Quantified Implications. Name specific figures wherever sources provide them.",
+};
+
+document.querySelectorAll('.persona-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.persona-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    const sopHint = document.getElementById('queue-sop-hint');
+    if (sopHint && !sopHint.value.trim()) {
+      sopHint.placeholder = PERSONA_HINTS[card.dataset.persona] ? 'Using ' + card.querySelector('.persona-name').textContent + ' template…' : 'Leave blank for default…';
+    }
+  });
+});
+
+// On form submit: inject persona hint into sop_hint if it's empty
+document.getElementById('form-queue-topic')?.addEventListener('submit', function() {
+  const sopHint = document.getElementById('queue-sop-hint');
+  const activePersona = document.querySelector('.persona-card.active');
+  if (sopHint && !sopHint.value.trim() && activePersona) {
+    const hint = PERSONA_HINTS[activePersona.dataset.persona];
+    if (hint) sopHint.value = hint;
+  }
+});
+
 // ── Filter tabs ──────────────────────────────────────────────
 function filterQ(f) {
   document.querySelectorAll('.qtab').forEach(t=>t.classList.remove('active'));
@@ -411,6 +668,7 @@ function setPipeline(stage){
 // ── Console ──────────────────────────────────────────────────
 const con=document.getElementById('console-out');
 let seeded=false;
+let hasLogContent=false;
 
 function addLog(e){
   if(!seeded){ con.innerHTML=''; seeded=true; }
@@ -420,9 +678,15 @@ function addLog(e){
   con.appendChild(d);
   con.scrollTop=con.scrollHeight;
   while(con.children.length>500) con.removeChild(con.firstChild);
+  // If the panel was hidden (run finished before page loaded), reveal it
+  if(!hasLogContent){
+    hasLogContent=true;
+    document.getElementById('engine-idle').style.display='none';
+    document.getElementById('engine-live').style.display='';
+  }
 }
 
-function clearConsole(){ con.innerHTML=''; seeded=false; }
+function clearConsole(){ con.innerHTML=''; seeded=false; hasLogContent=false; }
 function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ── Elapsed timer ────────────────────────────────────────────
@@ -507,11 +771,37 @@ function updateStats(s){
   }
 }
 
+// ── Mission stats strip live updates ─────────────────────────
+function updateMissionStrip(s) {
+  const stage = document.getElementById('stat-stage');
+  const elapsed = document.getElementById('stat-elapsed-strip');
+  const tokens = document.getElementById('stat-tokens-strip');
+  if (stage) {
+    stage.textContent = s.running && s.stage ? s.stage : 'idle';
+    stage.className = 'mission-stat-value' + (s.running ? ' live' : '');
+  }
+  if (elapsed && s.running) {
+    const sec = s.elapsed_seconds || 0;
+    elapsed.textContent = sec >= 60 ? Math.floor(sec/60)+'m '+( sec%60)+'s' : sec+'s';
+    elapsed.className = 'mission-stat-value live';
+  } else if (elapsed && !s.running) {
+    elapsed.className = 'mission-stat-value';
+  }
+  if (tokens && s.tokens_run > 0) {
+    tokens.textContent = (s.tokens_run >= 1000 ? (s.tokens_run/1000).toFixed(1)+'k' : s.tokens_run) + ' tkns';
+    tokens.className = 'mission-stat-value live';
+  } else if (tokens && !s.running) {
+    tokens.className = 'mission-stat-value';
+  }
+}
+
 // ── Main SSE state handler ───────────────────────────────────
 let wasRunning=false;
 
 function applyState(s){
+  if (window.updateReactUI) window.updateReactUI(s);
   updateStats(s);
+  updateMissionStrip(s);
   if(s.running){
     document.getElementById('engine-idle').style.display='none';
     document.getElementById('engine-live').style.display='';
@@ -526,6 +816,7 @@ function applyState(s){
       if(bar&&s.stage) bar.textContent=SLABELS[s.stage]||'Researching…';
     }
     if(!wasRunning){ startElapsed(); renderedQueries=0; renderedFiles=0; }
+    
     if(s.current_queries) renderQueries(s.current_queries);
     if(s.generated_files) renderFiles(s.generated_files);
     // sources / scrape
@@ -541,12 +832,22 @@ function applyState(s){
     if(wasRunning){
       wasRunning=false;
       stopElapsed();
-      // Don't auto-reload — let user read console. Show a "refresh" prompt instead.
       const notice=document.getElementById('eng-done-notice');
       if(notice) notice.style.display='';
     }
-    document.getElementById('engine-idle').style.display='';
-    document.getElementById('engine-live').style.display='none';
+    // Keep live panel visible if there are logs; update header to show last topic
+    if(!hasLogContent){
+      document.getElementById('engine-idle').style.display='';
+      document.getElementById('engine-live').style.display='none';
+    } else {
+      // Panel already visible from addLog — just update header if we have a topic
+      if(s.topic){
+        const el=document.getElementById('eng-topic');
+        if(el) el.textContent=s.topic;
+      }
+      const pct=s.total>0?Math.round(s.progress/s.total*100):100;
+      document.getElementById('eng-prog-fill').style.width=pct+'%';
+    }
   }
 }
 
@@ -575,30 +876,159 @@ function connect(){
 connect();
 </script>
 
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" src="/static/js/components/TokenSidebar.tsx"></script>
+<script type="text/babel" src="/static/js/components/NodeMap.tsx"></script>
+
+<script type="text/babel">
+  let tokenRoot = null;
+  let nodeMapRoot = null;
+
+  window.updateReactUI = function(s) {
+    if (!tokenRoot) {
+      const tsEl = document.getElementById('react-token-sidebar');
+      if (tsEl) tokenRoot = ReactDOM.createRoot(tsEl);
+    }
+    if (!nodeMapRoot) {
+      const nmEl = document.getElementById('react-node-map');
+      if (nmEl) nodeMapRoot = ReactDOM.createRoot(nmEl);
+    }
+
+    if (tokenRoot) {
+      // Create a mock metrics object based on the run state
+      const metrics = s.running ? {
+        tokens_total: s.tokens_run,
+        model: s.model || 'gemma4:26b', // Fallback to a known model
+        vram_usage: '18.0GB' // Default fallback
+      } : null;
+      tokenRoot.render(<TokenSidebar metrics={metrics} />);
+    }
+
+    if (nodeMapRoot && s.mapmaker_tree) {
+      nodeMapRoot.render(<NodeMap rootTask={s.mapmaker_tree} />);
+    } else if (nodeMapRoot) {
+      // Dummy tree for visual
+      const dummyTree = {
+        id: '1', title: s.topic || 'Awaiting mapmaker...', status: s.running ? 'running' : 'pending',
+        children: s.running && s.total > 0 ? Array(s.total).fill(0).map((_, i) => ({
+           id: `c${i}`, title: `Chapter ${i+1}`, status: i < s.progress ? 'done' : (i === s.progress ? 'running' : 'pending')
+        })) : []
+      };
+      nodeMapRoot.render(<NodeMap rootTask={dummyTree} />);
+    }
+  };
+</script>
+
 <!-- Queue topic modal -->
 <div class="modal-overlay hidden" id="modal-new-topic">
-  <div class="modal" style="max-width:520px;">
-    <h2 class="modal-title">Queue research topic</h2>
-    <form method="POST" action="/p/{{ project.slug }}/queue">
+  <div class="modal" style="max-width:580px;">
+    <h2 class="modal-title" id="modal-queue-title">Queue research topic</h2>
+
+  <!-- ── Step 1: topic form ──────────────────────────────── -->
+  <div id="modal-form-wrap">
+    <form method="POST" action="/p/{{ project.slug }}/queue" id="form-queue-topic">
       <div class="form-group" style="margin-bottom:14px;">
         <label class="form-label">Research topic</label>
-        <input class="form-input" name="topic" placeholder="e.g. supplier lead time variability management" required autofocus style="width:100%;"/>
+        <input class="form-input" name="topic" id="queue-topic-input" placeholder="e.g. supplier lead time variability management" required autofocus style="width:100%;"/>
       </div>
+
+      {# Persona picker #}
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Persona</label>
+        <div class="persona-grid" id="persona-grid">
+          <label class="persona-card active" data-persona="architect">
+            <input type="radio" name="_persona" value="architect" checked style="display:none;" />
+            <div class="persona-icon">🏛️</div>
+            <div class="persona-name">Architect</div>
+            <div class="persona-desc">General deep research &amp; synthesis</div>
+          </label>
+          <label class="persona-card" data-persona="scout">
+            <input type="radio" name="_persona" value="scout" style="display:none;" />
+            <div class="persona-icon">🔍</div>
+            <div class="persona-name">Vendor Scout</div>
+            <div class="persona-desc">Sourcing, MOQs, lead-time analysis</div>
+          </label>
+          <label class="persona-card" data-persona="auditor">
+            <input type="radio" name="_persona" value="auditor" style="display:none;" />
+            <div class="persona-icon">⚖️</div>
+            <div class="persona-name">Auditor</div>
+            <div class="persona-desc">Compliance, regulatory &amp; risk focus</div>
+          </label>
+          <label class="persona-card" data-persona="strategist">
+            <input type="radio" name="_persona" value="strategist" style="display:none;" />
+            <div class="persona-icon">♟️</div>
+            <div class="persona-name">Strategist</div>
+            <div class="persona-desc">Competitive moats, market entry</div>
+          </label>
+          <label class="persona-card" data-persona="procurement_expert">
+            <input type="radio" name="_persona" value="procurement_expert" style="display:none;" />
+            <div class="persona-icon">📦</div>
+            <div class="persona-name">Procurement</div>
+            <div class="persona-desc">Lead times, MOQs, payment terms</div>
+          </label>
+          <label class="persona-card" data-persona="analyst">
+            <input type="radio" name="_persona" value="analyst" style="display:none;" />
+            <div class="persona-icon">📊</div>
+            <div class="persona-name">Analyst</div>
+            <div class="persona-desc">Benchmarks, KPIs, quantitative data</div>
+          </label>
+        </div>
+      </div>
+
       <div class="form-group" style="margin-bottom:14px;">
         <label class="form-label">Category</label>
         <select class="form-select" name="category" style="width:100%;">
           {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
         </select>
       </div>
+
+      <div class="form-row" style="gap:12px; margin-bottom:14px; align-items:flex-start;">
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label class="form-label">Depth</label>
+          <select class="form-select" name="depth" id="queue-depth" style="width:100%;" onchange="updateDepthHint(this.value)">
+            {% for key, label, est in depth_choices %}
+            <option value="{{ key }}" {% if key == 'standard' %}selected{% endif %}>{{ label }} (~{{ est }}m)</option>
+            {% endfor %}
+          </select>
+          <div id="depth-hint" style="font-size:11.5px;color:var(--c-text-muted);margin-top:4px;"></div>
+        </div>
+        <div class="form-group" style="flex:1; margin-bottom:0;">
+          <label class="form-label">Expert Review</label>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:var(--c-input-bg);border:1px solid var(--c-card-border);border-radius:6px;cursor:pointer;">
+            <input type="checkbox" id="expert-panel-check" style="margin-top:1px;flex-shrink:0;" />
+            <span style="font-size:12.5px;line-height:1.4;color:var(--c-text-secondary);">Architect → Auditor → Refiner <span style="color:var(--c-text-muted);font-size:11.5px;">(~3× tokens)</span></span>
+          </label>
+        </div>
+      </div>
+
       <div class="form-group" style="margin-bottom:0;">
-        <label class="form-label">Custom structure hint (optional)</label>
-        <textarea class="form-textarea" name="sop_hint" placeholder="Leave blank for default report structure…" style="width:100%;"></textarea>
+        <label class="form-label">Custom structure hint <span style="font-weight:400; color:var(--c-text-muted);">(optional — overrides persona)</span></label>
+        <textarea class="form-textarea" name="sop_hint" id="queue-sop-hint" placeholder="Leave blank to use the selected persona's default…" style="width:100%;"></textarea>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-topic')">Cancel</button>
+        <button type="button" class="btn btn-secondary" id="decompose-btn" onclick="startDecompose()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>Decompose
+        </button>
         <button type="submit" class="btn btn-primary">Add to queue</button>
       </div>
     </form>
+  </div><!-- /modal-form-wrap -->
+
+  <!-- ── Step 2: chapter selection ─────────────────────────── -->
+  <div id="chapter-view" style="display:none;">
+    <div style="font-size:12px;color:var(--c-text-muted);margin-bottom:12px;" id="chapter-topic-label"></div>
+    <div id="chapter-list" style="max-height:340px;overflow-y:auto;border:1px solid var(--c-card-border);border-radius:6px;padding:4px 8px;"></div>
+    <div class="modal-footer" style="margin-top:12px;">
+      <button type="button" class="btn btn-secondary" onclick="backToForm()">← Back</button>
+      <button type="button" class="btn btn-secondary" onclick="toggleAllChapters()">Toggle all</button>
+      <button type="button" class="btn btn-primary" id="queue-chapters-btn" onclick="queueSelected()">Queue 0 chapters</button>
+    </div>
   </div>
+
+  </div><!-- /modal -->
 </div>
 {% endblock %}

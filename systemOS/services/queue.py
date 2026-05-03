@@ -129,6 +129,9 @@ def _db_add_task(
     trigger_type: str,
     queue_lane: Optional[str],
     model: Optional[str],
+    parent_task_id: Optional[str] = None,
+    root_task_id: Optional[str] = None,
+    depth: str = "standard",
 ) -> dict:
     task_id = str(uuid.uuid4())
     lane = queue_lane or _assign_lane(task_type, risk_level)
@@ -143,18 +146,18 @@ def _db_add_task(
                 INSERT INTO tasks (
                     id, workspace, user_name, trigger_type, task_type,
                     risk_level, module, model, input, status,
-                    queue_lane, priority_score
+                    queue_lane, priority_score, parent_task_id, root_task_id, depth
                 ) VALUES (
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, 'queued',
-                    %s, %s
+                    %s, %s, %s, %s, %s
                 )
                 RETURNING *
                 """,
                 (
                     task_id, workspace, user_name, trigger_type, task_type,
                     risk_level, module, model, input_text,
-                    lane, priority,
+                    lane, priority, parent_task_id, root_task_id, depth,
                 ),
             )
             row = dict(cur.fetchone())
@@ -221,7 +224,7 @@ def _db_get_full_queue(workspaces: list[str] = None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             query = """
                 SELECT id, workspace, user_name, task_type, risk_level,
-                       status, queue_lane, priority_score, created_at, input, result_output
+                       status, queue_lane, priority_score, created_at, input, output
                 FROM tasks
                 WHERE status IN (
                     'queued', 'pending_approval', 'approved', 'running',
@@ -352,10 +355,35 @@ def _db_set_status(task_id: str, status: str, **extra_fields) -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE tasks SET {set_clause} WHERE id = %s",
+                f"UPDATE tasks SET {set_clause} WHERE id = %s RETURNING parent_task_id",
                 values,
             )
+            row = cur.fetchone()
             updated = cur.rowcount
+
+            if updated and row and row[0] and status in ("done", "failed", "declined"):
+                parent_id = row[0]
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks 
+                    WHERE parent_task_id = %s 
+                      AND status NOT IN ('done', 'failed', 'declined')
+                    """,
+                    (parent_id,)
+                )
+                pending_count = cur.fetchone()[0]
+                if pending_count == 0:
+                    cur.execute(
+                        """
+                        UPDATE tasks 
+                        SET status = 'approved' 
+                        WHERE id = %s AND status = 'awaiting_children'
+                        """,
+                        (parent_id,)
+                    )
+                    if cur.rowcount > 0:
+                        logger.info("[QUEUE] Parent task %s all children complete, moved to approved", str(parent_id)[:8])
+
         conn.commit()
         return bool(updated)
     except Exception:
@@ -404,6 +432,9 @@ async def add_task(
     trigger_type: str,
     queue_lane: Optional[str] = None,
     model: Optional[str] = None,
+    parent_task_id: Optional[str] = None,
+    root_task_id: Optional[str] = None,
+    depth: str = "standard",
 ) -> str:
     """
     Enqueue a new task. Returns the task UUID string.
@@ -415,6 +446,7 @@ async def add_task(
         _db_add_task,
         workspace, user, task_type, risk_level,
         module, input, trigger_type, queue_lane, model,
+        parent_task_id, root_task_id, depth,
     )
     return row["id"]
 

@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import partial
 from typing import Optional
@@ -52,6 +53,60 @@ def _get_conn():
         password=os.getenv("POSTGRES_PASSWORD", ""),
         connect_timeout=5,
     )
+
+
+class _AsyncCursor:
+    """Thin async wrapper around a synchronous psycopg2 cursor."""
+    def __init__(self, cur):
+        self._cur = cur
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        self._cur.close()
+
+    async def execute(self, query, params=None):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: self._cur.execute(query, params))
+
+    async def fetchone(self):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._cur.fetchone)
+
+    async def fetchall(self):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._cur.fetchall)
+
+
+class _AsyncConn:
+    """Thin async wrapper around a synchronous psycopg2 connection."""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self):
+        return _AsyncCursor(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+
+@asynccontextmanager
+async def get_conn():
+    """Public async context manager — used by the orchestrator and other async callers."""
+    loop = asyncio.get_event_loop()
+    conn = await loop.run_in_executor(None, _get_conn)
+    wrapped = _AsyncConn(conn)
+    try:
+        yield wrapped
+    finally:
+        conn.close()
 
 
 async def _run_in_executor(func, *args, **kwargs):
@@ -129,6 +184,7 @@ def _db_add_task(
     trigger_type: str,
     queue_lane: Optional[str],
     model: Optional[str],
+    depth: str = "standard",
 ) -> dict:
     task_id = str(uuid.uuid4())
     lane = queue_lane or _assign_lane(task_type, risk_level)
@@ -143,18 +199,18 @@ def _db_add_task(
                 INSERT INTO tasks (
                     id, workspace, user_name, trigger_type, task_type,
                     risk_level, module, model, input, status,
-                    queue_lane, priority_score
+                    queue_lane, priority_score, depth
                 ) VALUES (
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, 'queued',
-                    %s, %s
+                    %s, %s, %s
                 )
                 RETURNING *
                 """,
                 (
                     task_id, workspace, user_name, trigger_type, task_type,
                     risk_level, module, model, input_text,
-                    lane, priority,
+                    lane, priority, depth,
                 ),
             )
             row = dict(cur.fetchone())
@@ -221,7 +277,7 @@ def _db_get_full_queue(workspaces: list[str] = None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             query = """
                 SELECT id, workspace, user_name, task_type, risk_level,
-                       status, queue_lane, priority_score, created_at, input, result_output
+                       status, queue_lane, priority_score, created_at, input, output
                 FROM tasks
                 WHERE status IN (
                     'queued', 'pending_approval', 'approved', 'running',
@@ -332,7 +388,7 @@ def _db_set_status(task_id: str, status: str, **extra_fields) -> bool:
     """
     allowed = {
         "output", "tokens_used", "duration_ms",
-        "tools_called", "model",
+        "tools_called", "model", "metrics"
     }
     updates = {"status": status}
     for k, v in extra_fields.items():
@@ -404,6 +460,7 @@ async def add_task(
     trigger_type: str,
     queue_lane: Optional[str] = None,
     model: Optional[str] = None,
+    depth: str = "standard",
 ) -> str:
     """
     Enqueue a new task. Returns the task UUID string.
@@ -414,7 +471,7 @@ async def add_task(
     row = await _run_in_executor(
         _db_add_task,
         workspace, user, task_type, risk_level,
-        module, input, trigger_type, queue_lane, model,
+        module, input, trigger_type, queue_lane, model, depth,
     )
     return row["id"]
 

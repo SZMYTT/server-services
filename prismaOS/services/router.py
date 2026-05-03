@@ -27,6 +27,9 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("prisma.router")
 
+# Global VRAM Management: Prevent OOM on heavy models
+VRAM_SEMAPHORE = asyncio.Semaphore(2)
+
 # ── Inference hosts ───────────────────────────────────────────
 
 OLLAMA_MAC_URL = os.getenv("OLLAMA_MAC_URL", "http://macbook-pro:11434")
